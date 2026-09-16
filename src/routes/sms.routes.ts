@@ -34,8 +34,12 @@ export const sendSms = createRoute({
       }),
       "The sent SMS",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: jsonContent(
-      createErrorSchema(sendSmsSchema),
+    [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+      z.object({
+        msg_id: z.string(),
+        status_code: z.string(),
+        description: z.string(),
+      }),
       "The validation error(s)",
     ),
   },

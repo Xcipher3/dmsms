@@ -5,6 +5,7 @@ import { requestId } from "hono/request-id";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
 import { defaultHook } from "stoker/openapi";
 
+import { dbLogger } from "@/middlewares/db-logger";
 import { pinoLogger } from "@/middlewares/pino-logger";
 
 import type { AppBindings, AppOpenAPI } from "./types";
@@ -20,7 +21,8 @@ export default function createApp() {
   const app = createRouter();
   app.use(requestId())
     .use(serveEmojiFavicon("📝"))
-    .use(pinoLogger());
+    .use(pinoLogger())
+    .use(dbLogger());
 
   app.notFound(notFound);
   app.onError(onError);

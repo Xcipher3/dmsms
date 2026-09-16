@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
 import { toZodV4SchemaTyped } from "@/lib/zod-utils";
@@ -32,6 +32,30 @@ export const optOuts = pgTable("opt_outs", {
   category: text().notNull(),
   reason: text().notNull(),
   source: text().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const optIns = pgTable("opt_ins", {
+  id: serial("id").primaryKey(),
+  phoneNumber: text("phone_number").notNull(),
+  category: text().notNull(),
+  reason: text().notNull(),
+  source: text().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const requestLogs = pgTable("request_logs", {
+  id: serial("id").primaryKey(),
+  requestId: text("request_id").notNull(),
+  method: text().notNull(),
+  path: text().notNull(),
+  statusCode: integer("status_code").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  ip: text(),
+  userAgent: text("user_agent"),
+  error: text(),
+  requestBody: jsonb("request_body"),
+  responseBody: jsonb("response_body"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -89,3 +113,21 @@ export const insertOptOutsSchema = toZodV4SchemaTyped(createInsertSchema(
 
 // @ts-expect-error partial exists on zod v4 type
 export const patchOptOutsSchema = insertOptOutsSchema.partial();
+
+export const selectOptInsSchema = toZodV4SchemaTyped(createSelectSchema(optIns));
+
+export const insertOptInsSchema = toZodV4SchemaTyped(createInsertSchema(
+  optIns,
+  {
+    phoneNumber: field => field.min(1),
+    category: field => field.min(1),
+    reason: field => field.min(1),
+    source: field => field.min(1),
+  },
+).omit({
+  id: true,
+  createdAt: true,
+}));
+
+// @ts-expect-error partial exists on zod v4 type
+export const patchOptInsSchema = insertOptInsSchema.partial();

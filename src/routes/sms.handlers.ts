@@ -3,7 +3,7 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import type { AppRouteHandler } from "@/lib/types";
 
 import db from "@/db";
-import { authTokens, smsMessages, optOuts } from "@/db/schema";
+import { authTokens, optIns, optOuts, smsMessages } from "@/db/schema";
 import env from "@/env";
 
 import type { GetDlrRoute, GetTokenRoute, ListOptOutsRoute, OptInRoute, OptOutRoute, SendSmsRoute } from "./sms.routes";
@@ -42,14 +42,23 @@ function getAuthToken(c: { req: { header: (name: string) => string | undefined }
   return c.req.header("authToken") || c.req.header("Authorization")?.replace("Bearer ", "");
 }
 
-async function callBlasta(endpoint: string, method: string, body: unknown, authToken?: string, useMock = true) {
+const endpointToMock = {
+  "/send_sms/": "sendSms",
+  "/dlr/": "getDlr",
+  "/get_token/": "getToken",
+  "/opt_out/": "optOut",
+  "/opt_in/": "optIn",
+  "/opt_outs/": "listOptOuts",
+} as const;
+
+async function callBlasta(endpoint: string, method: string, body: unknown, authToken?: string, useMock = true): Promise<Record<string, unknown>> {
   if (useMock) {
-    const mockKey = endpoint.replace("/", "").replace("/", "");
-    const mockResponse = mockBlastaResponses[mockKey as keyof typeof mockBlastaResponses];
+    const mockKey = endpointToMock[endpoint as keyof typeof endpointToMock];
+    const mockResponse = mockKey ? mockBlastaResponses[mockKey] : undefined;
     if (mockResponse && mockResponse.success) {
       return mockResponse.success as Record<string, unknown>;
     }
-    return mockResponse?.failure || { msg_id: "", status_code: "500", description: "Mock error" };
+    return (mockResponse?.failure || { msg_id: "", status_code: "500", description: "Mock error" }) as Record<string, unknown>;
   }
 
   const url = `${env.BLASTA_BASE_URL}${endpoint}`;
@@ -130,7 +139,7 @@ export const optIn: AppRouteHandler<OptInRoute> = async (c) => {
 
   const result = await callBlasta("/opt_in/", "POST", { numbers, category, reason }, authToken, true);
 
-  await db.insert(optOuts).values({
+  await db.insert(optIns).values({
     phoneNumber: numbers,
     category,
     reason,

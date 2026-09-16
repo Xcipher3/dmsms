@@ -1,10 +1,20 @@
+import * as HttpStatusCodes from "stoker/http-status-codes";
+
 import { createRouter } from "@/lib/create-app";
 
 import * as handlers from "./sms.handlers";
 import * as routes from "./sms.routes";
 
 const router = createRouter()
-  .openapi(routes.sendSms, handlers.sendSms)
+  .openapi(routes.sendSms, handlers.sendSms, (result, c) => {
+    if (!result.success) {
+      return c.json(
+        { msg_id: "", status_code: "400", description: "Invalid message format" },
+        HttpStatusCodes.BAD_REQUEST,
+      );
+    }
+    return undefined;
+  })
   .openapi(routes.getDlr, handlers.getDlr)
   .openapi(routes.getToken, handlers.getToken)
   .openapi(routes.optOut, handlers.optOut)

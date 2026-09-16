@@ -24,6 +24,7 @@ The API proxies SMS operations (sending, delivery reports, auth tokens, opt-in/o
 - Fully documented type-safe routes with `@hono/zod-openapi`
 - Interactive API docs served with Scalar
 - Structured logging with pino / hono-pino
+- Persistent request logs written to Postgres
 - Type-safe environment variables with zod
 - Database access with Drizzle ORM
 - Test suite with vitest
@@ -104,13 +105,15 @@ BLASTA_BASE_URL=https://sms.dmarkmobile.com/v3/v3/api
 
 The API uses Postgres via the [Neon serverless driver](https://neon.tech/docs/guides/neon-serverless-driver). Drizzle schema lives in `src/db/schema.ts`.
 
-Three tables are maintained locally:
+Five tables are maintained locally:
 
-| Table          | Purpose                                                  | Written by                              |
-| -------------- | -------------------------------------------------------- | --------------------------------------- |
-| `sms_messages` | Audit trail of every SMS sent through the wrapper        | `POST /sms/send`                        |
-| `auth_tokens`  | Issued access tokens and the account that requested them | `POST /sms/token`                       |
-| `opt_outs`     | Opt-in/opt-out records and their reason + source         | `POST /sms/opt-out`, `POST /sms/opt-in` |
+| Table          | Purpose                                                                            | Written by                        |
+| -------------- | ---------------------------------------------------------------------------------- | --------------------------------- |
+| `sms_messages` | Audit trail of every SMS sent through the wrapper                                  | `POST /sms/send`                  |
+| `auth_tokens`  | Issued access tokens and the account that requested them                           | `POST /sms/token`                 |
+| `opt_outs`     | Opt-out records and their reason + source                                          | `POST /sms/opt-out`               |
+| `opt_ins`      | Opt-in records and their reason + source                                           | `POST /sms/opt-in`                |
+| `request_logs` | Every HTTP request: method, path, status, latency, IP, request + response payloads | All routes (db-logger middleware) |
 
 Apply schema changes to the database:
 
@@ -193,10 +196,10 @@ Interactive API documentation is available at `GET /reference` (Scalar) and the 
 | `POST` | `/sms/dlr`      | Check delivery status of a message        | yes         | no             |
 | `POST` | `/sms/token`    | Request a new access token                | no          | `auth_tokens`  |
 | `POST` | `/sms/opt-out`  | Opt phone numbers out of a category       | yes         | `opt_outs`     |
-| `POST` | `/sms/opt-in`   | Opt phone numbers back in                 | yes         | `opt_outs`     |
+| `POST` | `/sms/opt-in`   | Opt phone numbers back in                 | yes         | `opt_ins`      |
 | `GET`  | `/sms/opt-outs` | List opt-out records                      | yes         | no             |
 
-Request bodies for `POST`/`PATCH` routes are validated with zod and rejected with `422` if invalid.
+Request bodies for `POST`/`PATCH` routes are validated with zod. `POST /sms/send` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure; all other routes return `422` with the default zod error structure.
 
 ### Authentication
 
@@ -240,6 +243,7 @@ Logging is handled by `hono-pino` (configured in `src/middlewares/pino-logger.ts
 - Log level is controlled by the `LOG_LEVEL` environment variable.
 - Logs are human-readable (pretty-printed) during development and raw JSON in production.
 - Set `LOG_LEVEL=silent` to disable logging entirely (the test suite does this).
+- Every request is also persisted to the `request_logs` table by `src/middlewares/db-logger.ts`. The insert runs in the background after the response is produced and is fail-silent: a database error is logged via pino and never affects the API response. Each row stores the incoming request body and the outgoing response body (`request_body`, `response_body` as `jsonb`, `null` when a body is absent or not JSON).
 
 Log levels in order: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`.
 
@@ -260,14 +264,16 @@ src/
 │   ├── constants.ts          # Shared schema/reference constants
 │   └── zod-utils.ts          # zod v4 typing helpers
 ├── middlewares/
-│   └── pino-logger.ts        # Request logging middleware
+│   ├── pino-logger.ts        # Request logging middleware
+│   └── db-logger.ts          # Persists every request to the request_logs table
 └── routes/
     ├── index.route.ts        # GET / index route
     ├── sms.index.ts          # Router assembling the SMS routes + handlers
     ├── sms.routes.ts         # OpenAPI route definitions
     └── sms.handlers.ts       # Hono request handlers (proxy + DB writes)
 tests/
-    └── blasta.test.ts        # Route group tests
+    ├── blasta.test.ts        # Route group tests
+    └── db-logger.test.ts     # DB request-log persistence test
 ```
 
 - Router/route definitions/handlers follow the split used in `src/routes/` (`sms.index.ts` + `sms.routes.ts` + `sms.handlers.ts`) — copy that pattern as a template for new route groups.
