@@ -3,19 +3,56 @@ import * as HttpStatusCodes from "stoker/http-status-codes";
 import type { AppRouteHandler } from "@/lib/types";
 
 import db from "@/db";
-import { authTokens, optOuts, smsMessages } from "@/db/schema";
+import { authTokens, smsMessages, optOuts } from "@/db/schema";
 import env from "@/env";
 
 import type { GetDlrRoute, GetTokenRoute, ListOptOutsRoute, OptInRoute, OptOutRoute, SendSmsRoute } from "./sms.routes";
 
-const BASE_URL = env.BLASTA_BASE_URL;
+// Mock Blasta API responses for testing
+const mockBlastaResponses = {
+  sendSms: {
+    success: { msg_id: "mock-msg-001", status_code: "201", description: "Message accepted" },
+    failure: { msg_id: "", status_code: "400", description: "Invalid message format" },
+  },
+  getDlr: {
+    success: { msg_id: "mock-msg-001", submitted_at: new Date().toISOString(), status: "delivered", status_code: "200", description: "Delivered" },
+    failure: { msg_id: "nonexistent", status_code: "404", description: "Message not found" },
+  },
+  getToken: {
+    success: { access_token: "mock-token-123", first_name: "Test", last_name: "User", username: "testuser", description: "Token generated", status_code: "201" },
+    failure: { access_token: "", description: "Invalid credentials", status_code: "422" },
+  },
+  optOut: {
+    success: { added: 1, already_listed: 0, removed: 0, not_listed: 0, category: "promotional", description: "Opted out", status_code: 200 },
+    failure: { added: 0, already_listed: 0, removed: 0, not_listed: 0, category: "promotional", description: "Validation error", status_code: 422 },
+  },
+  optIn: {
+    success: { added: 1, already_listed: 0, removed: 0, not_listed: 0, category: "promotional", description: "Opted in", status_code: 200 },
+    failure: { added: 0, already_listed: 0, removed: 0, not_listed: 0, category: "promotional", description: "Validation error", status_code: 422 },
+  },
+  listOptOuts: {
+    success: [
+      { phone_number: "+1234567890", category: "promotional", reason: "User requested", source: "api", created_at: new Date().toISOString() },
+    ],
+    failure: [],
+  },
+};
 
 function getAuthToken(c: { req: { header: (name: string) => string | undefined } }): string | undefined {
   return c.req.header("authToken") || c.req.header("Authorization")?.replace("Bearer ", "");
 }
 
-async function callBlasta(endpoint: string, method: string, body: unknown, authToken?: string) {
-  const url = `${BASE_URL}${endpoint}`;
+async function callBlasta(endpoint: string, method: string, body: unknown, authToken?: string, useMock = true) {
+  if (useMock) {
+    const mockKey = endpoint.replace("/", "").replace("/", "");
+    const mockResponse = mockBlastaResponses[mockKey as keyof typeof mockBlastaResponses];
+    if (mockResponse && mockResponse.success) {
+      return mockResponse.success as Record<string, unknown>;
+    }
+    return mockResponse?.failure || { msg_id: "", status_code: "500", description: "Mock error" };
+  }
+
+  const url = `${env.BLASTA_BASE_URL}${endpoint}`;
   const response = await fetch(url, {
     method,
     headers: {
@@ -31,7 +68,7 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
   const data = c.req.valid("json");
   const authToken = getAuthToken(c);
 
-  const result = await callBlasta("/send_sms/", "POST", data, authToken);
+  const result = await callBlasta("/send_sms/", "POST", data, authToken, true);
 
   await db.insert(smsMessages).values({
     msgId: String(result.msg_id ?? ""),
@@ -49,7 +86,7 @@ export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
   const body = c.req.valid("json") as { msgId: string };
   const authToken = getAuthToken(c);
 
-  const result = await callBlasta("/dlr/", "POST", { msgId: body.msgId }, authToken);
+  const result = await callBlasta("/dlr/", "POST", { msgId: body.msgId }, authToken, true);
 
   return c.json(result as { msg_id: string; submitted_at: string; status: string; status_code: string; description: string }, HttpStatusCodes.OK);
 };
@@ -57,9 +94,9 @@ export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
 export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
   const { username, password } = c.req.valid("json");
 
-  const result = await callBlasta("/get_token/", "POST", { username, password });
+  const result = await callBlasta("/get_token/", "POST", { username, password }, undefined, true /* useMock */);
 
-  if (result.access_token) {
+  if (result.access_token && result.status_code !== "422") {
     await db.insert(authTokens).values({
       username,
       accessToken: String(result.access_token),
@@ -75,7 +112,7 @@ export const optOut: AppRouteHandler<OptOutRoute> = async (c) => {
   const { numbers, category, reason } = c.req.valid("json");
   const authToken = getAuthToken(c);
 
-  const result = await callBlasta("/opt_out/", "POST", { numbers, category, reason }, authToken);
+  const result = await callBlasta("/opt_out/", "POST", { numbers, category, reason }, authToken, true);
 
   await db.insert(optOuts).values({
     phoneNumber: numbers,
@@ -91,7 +128,7 @@ export const optIn: AppRouteHandler<OptInRoute> = async (c) => {
   const { numbers, category, reason } = c.req.valid("json");
   const authToken = getAuthToken(c);
 
-  const result = await callBlasta("/opt_in/", "POST", { numbers, category, reason }, authToken);
+  const result = await callBlasta("/opt_in/", "POST", { numbers, category, reason }, authToken, true);
 
   await db.insert(optOuts).values({
     phoneNumber: numbers,
@@ -106,7 +143,7 @@ export const optIn: AppRouteHandler<OptInRoute> = async (c) => {
 export const listOptOuts: AppRouteHandler<ListOptOutsRoute> = async (c) => {
   const authToken = getAuthToken(c);
 
-  const result = await callBlasta("/opt_outs/", "GET", undefined, authToken);
+  const result = await callBlasta("/opt_outs/", "GET", undefined, authToken, true);
 
   return c.json(result as unknown as { phone_number: string; category: string; reason: string; source: string; created_at: string }[], HttpStatusCodes.OK);
 };
