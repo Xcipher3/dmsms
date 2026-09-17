@@ -11,6 +11,7 @@
     "lint:fix": "eslint . --fix",
     "test": "cross-env NODE_ENV=test vitest",
     "build": "tsc && tsc-alias"
+
   },
   "dependencies": {
     "@hono/node-server": "^1.18.1",

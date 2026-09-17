@@ -7,6 +7,11 @@ import { notFoundSchema } from "@/lib/constants";
 
 const tags = ["Blasta SMS"];
 
+const unauthorizedSchema = z.object({
+  status_code: z.string(),
+  description: z.string(),
+});
+
 const sendSmsSchema = z.object({
   msg: z.string().min(1),
   numbers: z.string().min(1),
@@ -16,10 +21,13 @@ const sendSmsSchema = z.object({
 
 export const sendSms = createRoute({
   operationId: "api_send_sms_create",
-  path: "/sms/send",
+  path: "/v3/v3/api/send_sms",
   method: "post",
   tags,
   request: {
+    headers: z.object({
+      authToken: z.string().optional(),
+    }),
     body: jsonContentRequired(
       sendSmsSchema,
       "The SMS to send",
@@ -28,7 +36,7 @@ export const sendSms = createRoute({
   responses: {
     [HttpStatusCodes.CREATED]: jsonContent(
       z.object({
-        msg: z.string(),
+        msg_id: z.string(),
         status_code: z.string(),
         description: z.string(),
       }),
@@ -42,6 +50,10 @@ export const sendSms = createRoute({
       }),
       "The validation error(s)",
     ),
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      unauthorizedSchema,
+      "Invalid or missing auth token",
+    ),
   },
 });
 
@@ -49,10 +61,13 @@ export type SendSmsSchemaType = z.infer<typeof sendSmsSchema>;
 
 export const getDlr = createRoute({
   operationId: "api_dlr_create",
-  path: "/sms/dlr",
+  path: "/v3/v3/api/dlr",
   method: "post",
   tags,
   request: {
+    headers: z.object({
+      authToken: z.string().optional(),
+    }),
     body: jsonContentRequired(
       z.object({
         msgId: z.string().min(1),
@@ -75,12 +90,16 @@ export const getDlr = createRoute({
       notFoundSchema,
       "Message not found",
     ),
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      unauthorizedSchema,
+      "Invalid or missing auth token",
+    ),
   },
 });
 
 export const getToken = createRoute({
   operationId: "api_get_token_create",
-  path: "/sms/token",
+  path: "/v3/v3/api/get_token",
   method: "post",
   tags,
   request: {
@@ -104,7 +123,15 @@ export const getToken = createRoute({
       }),
       "Token generated",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: jsonContent(
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      z.object({
+        access_token: z.string(),
+        description: z.string(),
+        status_code: z.string(),
+      }),
+      "Invalid credentials",
+    ),
+    [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(
       createErrorSchema(z.object({
         username: z.string(),
         password: z.string(),
@@ -116,10 +143,13 @@ export const getToken = createRoute({
 
 export const optOut = createRoute({
   operationId: "api_opt_out_create",
-  path: "/sms/opt-out",
+  path: "/v3/v3/api/opt_out",
   method: "post",
   tags,
   request: {
+    headers: z.object({
+      authToken: z.string().optional(),
+    }),
     body: jsonContentRequired(
       z.object({
         numbers: z.string().min(1),
@@ -142,7 +172,11 @@ export const optOut = createRoute({
       }),
       "Opted out",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: jsonContent(
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      unauthorizedSchema,
+      "Invalid or missing auth token",
+    ),
+    [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(
       createErrorSchema(z.object({
         numbers: z.string(),
         category: z.string(),
@@ -155,10 +189,13 @@ export const optOut = createRoute({
 
 export const optIn = createRoute({
   operationId: "api_opt_in_create",
-  path: "/sms/opt-in",
+  path: "/v3/v3/api/opt_in",
   method: "post",
   tags,
   request: {
+    headers: z.object({
+      authToken: z.string().optional(),
+    }),
     body: jsonContentRequired(
       z.object({
         numbers: z.string().min(1),
@@ -181,7 +218,11 @@ export const optIn = createRoute({
       }),
       "Opted in",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: jsonContent(
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      unauthorizedSchema,
+      "Invalid or missing auth token",
+    ),
+    [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(
       createErrorSchema(z.object({
         numbers: z.string(),
         category: z.string(),
@@ -194,9 +235,14 @@ export const optIn = createRoute({
 
 export const listOptOuts = createRoute({
   operationId: "api_opt_outs_list",
-  path: "/sms/opt-outs",
+  path: "/v3/v3/api/opt_outs",
   method: "get",
   tags,
+  request: {
+    headers: z.object({
+      authToken: z.string().optional(),
+    }),
+  },
   responses: {
     [HttpStatusCodes.OK]: jsonContent(
       z.array(
@@ -210,7 +256,11 @@ export const listOptOuts = createRoute({
       ),
       "List of opt-outs",
     ),
-    [HttpStatusCodes.UNPROCESSABLE_ENTITY]: jsonContent(
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      unauthorizedSchema,
+      "Invalid or missing auth token",
+    ),
+    [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(
       createErrorSchema(z.object({})),
       "The validation error(s)",
     ),

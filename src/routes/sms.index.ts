@@ -19,6 +19,9 @@ const router = createRouter()
   .openapi(routes.getToken, handlers.getToken)
   .openapi(routes.optOut, handlers.optOut)
   .openapi(routes.optIn, handlers.optIn)
-  .openapi(routes.listOptOuts, handlers.listOptOuts);
+  .openapi(routes.listOptOuts, handlers.listOptOuts)
+  .post("/mock/reset", handlers.resetMock)
+  .post("/mock/dlr/:msgId/deliver", handlers.deliverDlr)
+  .post("/mock/dlr/:msgId/fail", handlers.failDlr);
 
 export default router;

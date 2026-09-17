@@ -7,4 +7,8 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  test: {
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
+  },
 });

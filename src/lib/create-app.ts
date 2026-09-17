@@ -1,19 +1,34 @@
-import type { Schema } from "hono";
-
 import { OpenAPIHono } from "@hono/zod-openapi";
+import type { Hook } from "@hono/zod-openapi";
+import type { Hono } from "hono";
 import { requestId } from "hono/request-id";
+import * as HttpStatusCodes from "stoker/http-status-codes";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
-import { defaultHook } from "stoker/openapi";
 
 import { dbLogger } from "@/middlewares/db-logger";
 import { pinoLogger } from "@/middlewares/pino-logger";
 
-import type { AppBindings, AppOpenAPI } from "./types";
+import type { AppBindings } from "./types";
+
+const validationHook: Hook<any, any, any, any> = (result, c) => {
+  if (!result.success) {
+    return c.json(
+      {
+        success: result.success,
+        error: {
+          name: result.error.name,
+          issues: result.error.issues,
+        },
+      },
+      HttpStatusCodes.INTERNAL_SERVER_ERROR,
+    );
+  }
+};
 
 export function createRouter() {
   return new OpenAPIHono<AppBindings>({
     strict: false,
-    defaultHook,
+    defaultHook: validationHook,
   });
 }
 
@@ -29,6 +44,6 @@ export default function createApp() {
   return app;
 }
 
-export function createTestApp<S extends Schema>(router: AppOpenAPI<S>) {
-  return createApp().route("/", router);
+export function createTestApp(router: Hono<AppBindings, any, "/">) {
+  return createApp().route("/", router as unknown as OpenAPIHono<AppBindings, any, "/">);
 }

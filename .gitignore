@@ -8,12 +8,14 @@
 .idea/usage.statistics.xml
 .idea/shelf
  .tests
+ .opencode
 # deps
 node_modules/
 
 # env
 .env
 .env.production
+.env.test
 
 # logs
 logs/

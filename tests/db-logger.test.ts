@@ -11,6 +11,14 @@ import router from "@/routes/sms.index";
 const client = testClient(createTestApp(index));
 const smsClient = testClient(createTestApp(router));
 
+async function issueToken() {
+  const response = await smsClient.v3.v3.api.get_token.$post({
+    json: { username: "testuser", password: "testpass" },
+  });
+  const data = await response.json() as { access_token: string };
+  return data.access_token;
+}
+
 async function waitForLogByRequestId(requestId: string, timeoutMs = 10_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -24,7 +32,7 @@ async function waitForLogByRequestId(requestId: string, timeoutMs = 10_000) {
 
 describe("db logger", () => {
   it("stores requestBody=null and responseBody JSON for GET", { timeout: 20_000 }, async () => {
-    const res = await client.index.$get();
+    const res = await client.index.$get({});
     expect(res.status).toBe(200);
 
     const requestId = res.headers.get("x-request-id")!;
@@ -37,21 +45,22 @@ describe("db logger", () => {
     await db.delete(requestLogs).where(eq(requestLogs.id, row.id));
   });
 
-  it("stores requestBody and responseBody JSON for POST /sms/send", { timeout: 20_000 }, async () => {
+  it("stores requestBody and responseBody JSON for POST /v3/v3/api/send_sms/", { timeout: 20_000 }, async () => {
     const payload = {
       msg: "hello from db-logger test",
       numbers: "+256700999999",
       dlr_url: "https://example.com/dlr",
       category: "marketing",
     };
-    const res = await smsClient.sms.send.$post({ json: payload });
+    const token = await issueToken();
+    const res = await smsClient.v3.v3.api.send_sms.$post({ json: payload, header: { authToken: token } });
     expect(res.status).toBe(201);
 
     const requestId = res.headers.get("x-request-id")!;
     const row = await waitForLogByRequestId(requestId);
 
     expect(row.method).toBe("POST");
-    expect(row.path).toBe("/sms/send");
+    expect(row.path).toBe("/v3/v3/api/send_sms");
     expect(row.requestBody).toEqual(payload);
     expect(row.responseBody).toEqual(
       expect.objectContaining({

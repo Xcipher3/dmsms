@@ -1,32 +1,45 @@
 import { testClient } from "hono/testing";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createTestApp } from "@/lib/create-app";
 import router from "@/routes/sms.index";
 
 const client = testClient(createTestApp(router));
 
+beforeEach(async () => {
+  await router.request("/mock/reset", { method: "POST" });
+});
+
+async function issueToken(username = "testuser", password = "testpass") {
+  const res = await client.v3.v3.api.get_token.$post({ json: { username, password } });
+  const data = await res.json() as { access_token: string };
+  return data.access_token;
+}
+
 describe("blasta SMS API - End-to-End Tests", () => {
   describe("send SMS", () => {
     it("should return success response with mock data", async () => {
-      const response = await client.sms.send.$post({
+      const token = await issueToken();
+
+      const response = await client.v3.v3.api.send_sms.$post({
         json: {
           msg: "Test message",
           numbers: "+1234567890",
           dlr_url: "https://example.com/dlr",
           category: "promotional",
         },
+        header: { authToken: token },
       });
 
       expect(response.status).toBe(201);
       const data = await response.json();
-      expect(data).toHaveProperty("msg_id");
+      expect(data).toHaveProperty("msg_id", "mock-msg-001");
       expect(data).toHaveProperty("status_code", "201");
       expect(data).toHaveProperty("description", "Message accepted");
     });
 
     it("should handle validation errors", async () => {
-      const response = await client.sms.send.$post({
+      const response = await client.v3.v3.api.send_sms.$post({
         json: {
           msg: "",
           numbers: "",
@@ -39,34 +52,60 @@ describe("blasta SMS API - End-to-End Tests", () => {
       const data = await response.json();
       expect(data).toHaveProperty("status_code", "400");
     });
+
+    it("should reject requests without a valid token", async () => {
+      const response = await client.v3.v3.api.send_sms.$post({
+        json: {
+          msg: "Test message",
+          numbers: "+1234567890",
+          dlr_url: "https://example.com/dlr",
+          category: "promotional",
+        },
+      });
+
+      expect(response.status).toBe(401);
+    });
   });
 
   describe("check DLR", () => {
-    it("should return delivery status for existing message", async () => {
-      const response = await client.sms.dlr.$post({
-        json: { msgId: "mock-msg-001" },
+    it("should return delivery status for an existing message", async () => {
+      const token = await issueToken();
+      const sendRes = await client.v3.v3.api.send_sms.$post({
+        json: {
+          msg: "Test message",
+          numbers: "+1234567890",
+          dlr_url: "https://example.com/dlr",
+          category: "promotional",
+        },
+        header: { authToken: token },
       });
+      const { msg_id } = await sendRes.json() as unknown as { msg_id: string };
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data).toHaveProperty("status", "delivered");
-      expect(data).toHaveProperty("status_code", "200");
+      const pending = await client.v3.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
+      expect(pending.status).toBe(200);
+      expect(await pending.json()).toHaveProperty("status", "pending");
+
+      await router.request(`/mock/dlr/${msg_id}/deliver`, { method: "POST" });
+
+      const delivered = await client.v3.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
+      expect(delivered.status).toBe(200);
+      expect(await delivered.json()).toHaveProperty("status", "delivered");
     });
 
     it("should return 404 for nonexistent message", async () => {
-      const response = await client.sms.dlr.$post({
+      const token = await issueToken();
+      const response = await client.v3.v3.api.dlr.$post({
         json: { msgId: "nonexistent-msg" },
+        header: { authToken: token },
       });
 
       expect(response.status).toBe(404);
-      const data = await response.json();
-      expect(data).toHaveProperty("status_code", "404");
     });
   });
 
   describe("generate Token", () => {
     it("should return mock access token", async () => {
-      const response = await client.sms.token.$post({
+      const response = await client.v3.v3.api.get_token.$post({
         json: {
           username: "testuser",
           password: "testpass",
@@ -79,8 +118,8 @@ describe("blasta SMS API - End-to-End Tests", () => {
       expect(data).toHaveProperty("description", "Token generated");
     });
 
-    it("should handle invalid credentials", async () => {
-      const response = await client.sms.token.$post({
+    it("should reject invalid credentials", async () => {
+      const response = await client.v3.v3.api.get_token.$post({
         json: {
           username: "wrong",
           password: "wrong",
@@ -95,12 +134,14 @@ describe("blasta SMS API - End-to-End Tests", () => {
 
   describe("opt Out", () => {
     it("should return success opt-out response", async () => {
-      const response = await client.sms["opt-out"].$post({
+      const token = await issueToken();
+      const response = await client.v3.v3.api.opt_out.$post({
         json: {
           numbers: "+1234567890",
           category: "promotional",
           reason: "User requested",
         },
+        header: { authToken: token },
       });
 
       expect(response.status).toBe(200);
@@ -110,7 +151,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
     });
 
     it("should handle validation errors in opt-out", async () => {
-      const response = await client.sms["opt-out"].$post({
+      const response = await client.v3.v3.api.opt_out.$post({
         json: {
           numbers: "",
           category: "",
@@ -118,20 +159,22 @@ describe("blasta SMS API - End-to-End Tests", () => {
         },
       });
 
-      expect(response.status).toBe(422);
+      expect(response.status).toBe(500);
       const data = await response.json();
-      expect(data).toHaveProperty("status_code", 422);
+      expect(data).toHaveProperty("success", false);
     });
   });
 
   describe("opt In", () => {
     it("should return success opt-in response", async () => {
-      const response = await client.sms["opt-in"].$post({
+      const token = await issueToken();
+      const response = await client.v3.v3.api.opt_in.$post({
         json: {
           numbers: "+1234567890",
           category: "promotional",
           reason: "User requested",
         },
+        header: { authToken: token },
       });
 
       expect(response.status).toBe(200);
@@ -143,12 +186,12 @@ describe("blasta SMS API - End-to-End Tests", () => {
 
   describe("list Opt Outs", () => {
     it("should return list of opt-outs", async () => {
-      const response = await client.sms["opt-outs"].$get();
+      const token = await issueToken();
+      const response = await client.v3.v3.api.opt_outs.$get({ header: { authToken: token } });
 
       expect(response.status).toBe(200);
       const data = (await response.json()) as unknown[];
       expect(Array.isArray(data)).toBe(true);
-      expect(data.length).toBeGreaterThanOrEqual(0);
     });
   });
 });

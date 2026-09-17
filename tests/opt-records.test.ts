@@ -9,6 +9,14 @@ import router from "@/routes/sms.index";
 
 const client = testClient(createTestApp(router));
 
+async function issueToken() {
+  const response = await client.v3.v3.api.get_token.$post({
+    json: { username: "testuser", password: "testpass" },
+  });
+  const data = await response.json() as { access_token: string };
+  return data.access_token;
+}
+
 async function waitForRow(
   query: () => Promise<Array<Record<string, unknown>>>,
   timeoutMs = 10_000,
@@ -25,12 +33,14 @@ async function waitForRow(
 
 describe("opt-in / opt-out records", () => {
   it("persists opt-in to the opt_ins table", { timeout: 20_000 }, async () => {
-    const response = await client.sms["opt-in"].$post({
+    const token = await issueToken();
+    const response = await client.v3.v3.api.opt_in.$post({
       json: {
         numbers: "+256700900001",
         category: "marketing",
         reason: "User requested",
       },
+      header: { authToken: token },
     });
 
     expect(response.status).toBe(200);
@@ -49,12 +59,14 @@ describe("opt-in / opt-out records", () => {
   });
 
   it("persists opt-out to the opt_outs table", { timeout: 20_000 }, async () => {
-    const response = await client.sms["opt-out"].$post({
+    const token = await issueToken();
+    const response = await client.v3.v3.api.opt_out.$post({
       json: {
         numbers: "+256700900002",
         category: "marketing",
         reason: "User unsubscribed",
       },
+      header: { authToken: token },
     });
 
     expect(response.status).toBe(200);

@@ -109,10 +109,10 @@ Five tables are maintained locally:
 
 | Table          | Purpose                                                                            | Written by                        |
 | -------------- | ---------------------------------------------------------------------------------- | --------------------------------- |
-| `sms_messages` | Audit trail of every SMS sent through the wrapper                                  | `POST /sms/send`                  |
-| `auth_tokens`  | Issued access tokens and the account that requested them                           | `POST /sms/token`                 |
-| `opt_outs`     | Opt-out records and their reason + source                                          | `POST /sms/opt-out`               |
-| `opt_ins`      | Opt-in records and their reason + source                                           | `POST /sms/opt-in`                |
+| `sms_messages` | Audit trail of every SMS sent through the wrapper                                  | `POST /v3/v3/api/send_sms/`          |
+| `auth_tokens`  | Issued access tokens and the account that requested them                           | `POST /v3/v3/api/get_token/`         |
+| `opt_outs`     | Opt-out records and their reason + source                                          | `POST /v3/v3/api/opt_out/`           |
+| `opt_ins`      | Opt-in records and their reason + source                                           | `POST /v3/v3/api/opt_in/`            |
 | `request_logs` | Every HTTP request: method, path, status, latency, IP, request + response payloads | All routes (db-logger middleware) |
 
 Apply schema changes to the database:
@@ -192,18 +192,18 @@ Interactive API documentation is available at `GET /reference` (Scalar) and the 
 | `GET`  | `/`             | API index / health info                   | no          | no             |
 | `GET`  | `/doc`          | OpenAPI 3.0 specification                 | no          | no             |
 | `GET`  | `/reference`    | Scalar interactive API docs               | no          | no             |
-| `POST` | `/sms/send`     | Send an SMS via Blasta, record it locally | yes         | `sms_messages` |
-| `POST` | `/sms/dlr`      | Check delivery status of a message        | yes         | no             |
-| `POST` | `/sms/token`    | Request a new access token                | no          | `auth_tokens`  |
-| `POST` | `/sms/opt-out`  | Opt phone numbers out of a category       | yes         | `opt_outs`     |
-| `POST` | `/sms/opt-in`   | Opt phone numbers back in                 | yes         | `opt_ins`      |
-| `GET`  | `/sms/opt-outs` | List opt-out records                      | yes         | no             |
+| `POST` | `/v3/v3/api/send_sms/` | Send an SMS via Blasta, record it locally | yes         | `sms_messages` |
+| `POST` | `/v3/v3/api/dlr/`      | Check delivery status of a message        | yes         | no             |
+| `POST` | `/v3/v3/api/get_token/`| Request a new access token                | no          | `auth_tokens`  |
+| `POST` | `/v3/v3/api/opt_out/`  | Opt phone numbers out of a category       | yes         | `opt_outs`     |
+| `POST` | `/v3/v3/api/opt_in/`   | Opt phone numbers back in                 | yes         | `opt_ins`      |
+| `GET`  | `/v3/v3/api/opt_outs/` | List opt-out records                      | yes         | no             |
 
-Request bodies for `POST`/`PATCH` routes are validated with zod. `POST /sms/send` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure; all other routes return `422` with the default zod error structure.
+Request bodies for `POST`/`PATCH` routes are validated with zod. `POST /v3/v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure; all other routes return `500` with the default zod error structure.
 
 ### Authentication
 
-All routes expect the Blasta auth token via a header, except `POST /sms/token` (which exchanges username/password for a token):
+All routes expect the Blasta auth token via a header, except `POST /v3/v3/api/get_token/` (which exchanges username/password for a token):
 
 ```sh
 authToken: <your_token>
@@ -214,7 +214,7 @@ An `Authorization: Bearer <token>` header is also accepted.
 ### Example: send an SMS
 
 ```sh
-curl -X POST http://localhost:9999/sms/send \
+curl -X POST http://localhost:9999/v3/v3/api/send_sms/ \
   -H "Content-Type: application/json" \
   -H "authToken: <your_token>" \
   -d '{
@@ -228,7 +228,7 @@ curl -X POST http://localhost:9999/sms/send \
 ### Example: generate a token
 
 ```sh
-curl -X POST http://localhost:9999/sms/token \
+curl -X POST http://localhost:9999/v3/v3/api/get_token/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "your_username",
