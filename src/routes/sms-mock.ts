@@ -110,7 +110,6 @@ class SmsMockState {
   readonly tokens = new Set<string>();
 
   private msgCounter = 0;
-  private tokenCounter = 123;
 
   reset(): void {
     this.messages.clear();
@@ -118,7 +117,6 @@ class SmsMockState {
     this.optIns.clear();
     this.tokens.clear();
     this.msgCounter = 0;
-    this.tokenCounter = 123;
   }
 
   nextMsgId(): string {
@@ -127,8 +125,12 @@ class SmsMockState {
   }
 
   issueToken(): string {
-    const token = `mock-token-${this.tokenCounter}`;
-    this.tokenCounter += 1;
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = crypto.getRandomValues(new Uint8Array(7));
+    let token = "";
+    for (let i = 0; i < bytes.length; i++) {
+      token += alphabet[bytes[i] % alphabet.length];
+    }
     this.tokens.add(token);
     return token;
   }

@@ -26,4 +26,17 @@ export default function configureOpenAPI(app: AppOpenAPI) {
       },
     }),
   );
+
+  app.get(
+    "/docs",
+    Scalar({
+      url: "/doc",
+      theme: "kepler",
+      layout: "classic",
+      defaultHttpClient: {
+        targetKey: "js",
+        clientKey: "fetch",
+      },
+    }),
+  );
 }

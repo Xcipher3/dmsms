@@ -3,15 +3,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createTestApp } from "@/lib/create-app";
 import router from "@/routes/sms.index";
+import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 
 const client = testClient(createTestApp(router));
 
-beforeEach(async () => {
-  await router.request("/mock/reset", { method: "POST" });
+beforeEach(() => {
+  resetMockState();
 });
 
 async function issueToken(username = "testuser", password = "testpass") {
-  const res = await client.v3.v3.api.get_token.$post({ json: { username, password } });
+  const res = await client.v3.api.get_token.$post({ json: { username, password } });
   const data = await res.json() as { access_token: string };
   return data.access_token;
 }
@@ -21,7 +22,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
     it("should return success response with mock data", async () => {
       const token = await issueToken();
 
-      const response = await client.v3.v3.api.send_sms.$post({
+      const response = await client.v3.api.send_sms.$post({
         json: {
           msg: "Test message",
           numbers: "+1234567890",
@@ -39,7 +40,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
     });
 
     it("should handle validation errors", async () => {
-      const response = await client.v3.v3.api.send_sms.$post({
+      const response = await client.v3.api.send_sms.$post({
         json: {
           msg: "",
           numbers: "",
@@ -54,7 +55,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
     });
 
     it("should reject requests without a valid token", async () => {
-      const response = await client.v3.v3.api.send_sms.$post({
+      const response = await client.v3.api.send_sms.$post({
         json: {
           msg: "Test message",
           numbers: "+1234567890",
@@ -70,7 +71,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
   describe("check DLR", () => {
     it("should return delivery status for an existing message", async () => {
       const token = await issueToken();
-      const sendRes = await client.v3.v3.api.send_sms.$post({
+      const sendRes = await client.v3.api.send_sms.$post({
         json: {
           msg: "Test message",
           numbers: "+1234567890",
@@ -81,20 +82,20 @@ describe("blasta SMS API - End-to-End Tests", () => {
       });
       const { msg_id } = await sendRes.json() as unknown as { msg_id: string };
 
-      const pending = await client.v3.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
+      const pending = await client.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
       expect(pending.status).toBe(200);
       expect(await pending.json()).toHaveProperty("status", "pending");
 
-      await router.request(`/mock/dlr/${msg_id}/deliver`, { method: "POST" });
+      mockSetDlrStatus(msg_id, "delivered");
 
-      const delivered = await client.v3.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
+      const delivered = await client.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
       expect(delivered.status).toBe(200);
       expect(await delivered.json()).toHaveProperty("status", "delivered");
     });
 
     it("should return 404 for nonexistent message", async () => {
       const token = await issueToken();
-      const response = await client.v3.v3.api.dlr.$post({
+      const response = await client.v3.api.dlr.$post({
         json: { msgId: "nonexistent-msg" },
         header: { authToken: token },
       });
@@ -105,7 +106,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
 
   describe("generate Token", () => {
     it("should return mock access token", async () => {
-      const response = await client.v3.v3.api.get_token.$post({
+      const response = await client.v3.api.get_token.$post({
         json: {
           username: "testuser",
           password: "testpass",
@@ -113,13 +114,13 @@ describe("blasta SMS API - End-to-End Tests", () => {
       });
 
       expect(response.status).toBe(201);
-      const data = await response.json();
-      expect(data).toHaveProperty("access_token", "mock-token-123");
+      const data = await response.json() as { access_token: string };
+      expect(data.access_token).toHaveLength(7);
       expect(data).toHaveProperty("description", "Token generated");
     });
 
     it("should reject invalid credentials", async () => {
-      const response = await client.v3.v3.api.get_token.$post({
+      const response = await client.v3.api.get_token.$post({
         json: {
           username: "wrong",
           password: "wrong",
@@ -135,7 +136,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
   describe("opt Out", () => {
     it("should return success opt-out response", async () => {
       const token = await issueToken();
-      const response = await client.v3.v3.api.opt_out.$post({
+      const response = await client.v3.api.opt_out.$post({
         json: {
           numbers: "+1234567890",
           category: "promotional",
@@ -151,7 +152,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
     });
 
     it("should handle validation errors in opt-out", async () => {
-      const response = await client.v3.v3.api.opt_out.$post({
+      const response = await client.v3.api.opt_out.$post({
         json: {
           numbers: "",
           category: "",
@@ -159,7 +160,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
         },
       });
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(400);
       const data = await response.json();
       expect(data).toHaveProperty("success", false);
     });
@@ -168,7 +169,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
   describe("opt In", () => {
     it("should return success opt-in response", async () => {
       const token = await issueToken();
-      const response = await client.v3.v3.api.opt_in.$post({
+      const response = await client.v3.api.opt_in.$post({
         json: {
           numbers: "+1234567890",
           category: "promotional",
@@ -187,7 +188,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
   describe("list Opt Outs", () => {
     it("should return list of opt-outs", async () => {
       const token = await issueToken();
-      const response = await client.v3.v3.api.opt_outs.$get({ header: { authToken: token } });
+      const response = await client.v3.api.opt_outs.$get({ header: { authToken: token } });
 
       expect(response.status).toBe(200);
       const data = (await response.json()) as unknown[];

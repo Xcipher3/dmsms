@@ -10,7 +10,7 @@ import router from "@/routes/sms.index";
 const client = testClient(createTestApp(router));
 
 async function issueToken() {
-  const response = await client.v3.v3.api.get_token.$post({
+  const response = await client.v3.api.get_token.$post({
     json: { username: "testuser", password: "testpass" },
   });
   const data = await response.json() as { access_token: string };
@@ -34,7 +34,7 @@ async function waitForRow(
 describe("opt-in / opt-out records", () => {
   it("persists opt-in to the opt_ins table", { timeout: 20_000 }, async () => {
     const token = await issueToken();
-    const response = await client.v3.v3.api.opt_in.$post({
+    const response = await client.v3.api.opt_in.$post({
       json: {
         numbers: "+256700900001",
         category: "marketing",
@@ -60,7 +60,7 @@ describe("opt-in / opt-out records", () => {
 
   it("persists opt-out to the opt_outs table", { timeout: 20_000 }, async () => {
     const token = await issueToken();
-    const response = await client.v3.v3.api.opt_out.$post({
+    const response = await client.v3.api.opt_out.$post({
       json: {
         numbers: "+256700900002",
         category: "marketing",

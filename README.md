@@ -86,7 +86,7 @@ All environment variables are validated at startup against a zod schema in `src/
 | `DATABASE_AUTH_TOKEN` | production only | —                                       | Neon auth token; required when `NODE_ENV=production`.                             |
 | `BLASTA_USERNAME`     | yes             | —                                       | Blasta account username.                                                          |
 | `BLASTA_PASSWORD`     | yes             | —                                       | Blasta account password.                                                          |
-| `BLASTA_BASE_URL`     | no              | `https://sms.dmarkmobile.com/v3/v3/api` | Base URL of the Blasta v3 API that all traffic is proxied to.                     |
+| `BLASTA_BASE_URL`     | no              | `https://sms.dmarkmobile.com/v3/api` | Base URL of the Blasta v3 API that all traffic is proxied to.                     |
 
 Example `.env`:
 
@@ -98,7 +98,7 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/blastadb
 DATABASE_AUTH_TOKEN=
 BLASTA_USERNAME=your_username
 BLASTA_PASSWORD=your_password
-BLASTA_BASE_URL=https://sms.dmarkmobile.com/v3/v3/api
+BLASTA_BASE_URL=https://sms.dmarkmobile.com/v3/api
 ```
 
 ## Database
@@ -109,10 +109,10 @@ Five tables are maintained locally:
 
 | Table          | Purpose                                                                            | Written by                        |
 | -------------- | ---------------------------------------------------------------------------------- | --------------------------------- |
-| `sms_messages` | Audit trail of every SMS sent through the wrapper                                  | `POST /v3/v3/api/send_sms/`          |
-| `auth_tokens`  | Issued access tokens and the account that requested them                           | `POST /v3/v3/api/get_token/`         |
-| `opt_outs`     | Opt-out records and their reason + source                                          | `POST /v3/v3/api/opt_out/`           |
-| `opt_ins`      | Opt-in records and their reason + source                                           | `POST /v3/v3/api/opt_in/`            |
+| `sms_messages` | Audit trail of every SMS sent through the wrapper                                  | `POST /v3/api/send_sms/`          |
+| `auth_tokens`  | Issued access tokens and the account that requested them                           | `POST /v3/api/get_token/`         |
+| `opt_outs`     | Opt-out records and their reason + source                                          | `POST /v3/api/opt_out/`           |
+| `opt_ins`      | Opt-in records and their reason + source                                           | `POST /v3/api/opt_in/`            |
 | `request_logs` | Every HTTP request: method, path, status, latency, IP, request + response payloads | All routes (db-logger middleware) |
 
 Apply schema changes to the database:
@@ -192,18 +192,18 @@ Interactive API documentation is available at `GET /reference` (Scalar) and the 
 | `GET`  | `/`             | API index / health info                   | no          | no             |
 | `GET`  | `/doc`          | OpenAPI 3.0 specification                 | no          | no             |
 | `GET`  | `/reference`    | Scalar interactive API docs               | no          | no             |
-| `POST` | `/v3/v3/api/send_sms/` | Send an SMS via Blasta, record it locally | yes         | `sms_messages` |
-| `POST` | `/v3/v3/api/dlr/`      | Check delivery status of a message        | yes         | no             |
-| `POST` | `/v3/v3/api/get_token/`| Request a new access token                | no          | `auth_tokens`  |
-| `POST` | `/v3/v3/api/opt_out/`  | Opt phone numbers out of a category       | yes         | `opt_outs`     |
-| `POST` | `/v3/v3/api/opt_in/`   | Opt phone numbers back in                 | yes         | `opt_ins`      |
-| `GET`  | `/v3/v3/api/opt_outs/` | List opt-out records                      | yes         | no             |
+| `POST` | `/v3/api/get_token/`| Request a new access token                | no          | `auth_tokens`  |
+| `POST` | `/v3/api/send_sms/` | Send an SMS via Blasta, record it locally | yes         | `sms_messages` |
+| `POST` | `/v3/api/dlr/`      | Check delivery status of a message        | yes         | no             |
+| `POST` | `/v3/api/opt_in/`   | Opt phone numbers back in                 | yes         | `opt_ins`      |
+| `POST` | `/v3/api/opt_out/`  | Opt phone numbers out of a category       | yes         | `opt_outs`     |
+| `GET`  | `/v3/api/opt_outs/` | List opt-out records                      | yes         | no             |
 
-Request bodies for `POST`/`PATCH` routes are validated with zod. `POST /v3/v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure; all other routes return `500` with the default zod error structure.
+Request bodies for `POST`/`PATCH` routes are validated with zod. `POST /v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure; all other routes return `500` with the default zod error structure.
 
 ### Authentication
 
-All routes expect the Blasta auth token via a header, except `POST /v3/v3/api/get_token/` (which exchanges username/password for a token):
+All routes expect the Blasta auth token via a header, except `POST /v3/api/get_token/` (which exchanges username/password for a token):
 
 ```sh
 authToken: <your_token>
@@ -214,7 +214,7 @@ An `Authorization: Bearer <token>` header is also accepted.
 ### Example: send an SMS
 
 ```sh
-curl -X POST http://localhost:9999/v3/v3/api/send_sms/ \
+curl -X POST http://localhost:9999/v3/api/send_sms/ \
   -H "Content-Type: application/json" \
   -H "authToken: <your_token>" \
   -d '{
@@ -228,7 +228,7 @@ curl -X POST http://localhost:9999/v3/v3/api/send_sms/ \
 ### Example: generate a token
 
 ```sh
-curl -X POST http://localhost:9999/v3/v3/api/get_token/ \
+curl -X POST http://localhost:9999/v3/api/get_token/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "your_username",

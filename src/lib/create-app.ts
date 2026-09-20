@@ -20,7 +20,7 @@ const validationHook: Hook<any, any, any, any> = (result, c) => {
           issues: result.error.issues,
         },
       },
-      HttpStatusCodes.INTERNAL_SERVER_ERROR,
+      HttpStatusCodes.BAD_REQUEST,
     );
   }
 };

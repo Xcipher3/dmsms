@@ -14,8 +14,6 @@ import {
   mockOptIn,
   mockOptOut,
   mockSendSms,
-  mockSetDlrStatus,
-  resetMockState,
 } from "./sms-mock";
 
 function getAuthToken(c: { req: { header: (name: string) => string | undefined } }): string | undefined {
@@ -39,15 +37,22 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
     return c.json(reply.body, 401);
   }
 
+  const phoneNumbers = data.numbers
+    .split(",")
+    .map(n => n.trim())
+    .filter(Boolean);
+
   await bestEffort(c, async () => {
-    await db.insert(smsMessages).values({
-      msgId: reply.body.msg_id,
-      phone: data.numbers,
-      msg: data.msg,
-      dlrUrl: data.dlr_url,
-      category: data.category,
-      status: "sent",
-    });
+    await db.insert(smsMessages).values(
+      phoneNumbers.map(phone => ({
+        msgId: reply.body.msg_id,
+        phone,
+        msg: data.msg,
+        dlrUrl: data.dlr_url,
+        category: data.category,
+        status: "sent",
+      })),
+    );
   });
 
   return c.json(reply.body, 201);
@@ -136,30 +141,3 @@ export const listOptOuts: AppRouteHandler<ListOptOutsRoute> = async (c) => {
 
   return c.json(reply.body, 200);
 };
-
-export function resetMock(c: Context<AppBindings>) {
-  resetMockState();
-  return c.json({ reset: true });
-}
-
-export function deliverDlr(c: Context<AppBindings>) {
-  const { msgId } = c.req.param();
-  const reply = mockSetDlrStatus(msgId, "delivered");
-
-  if (reply.status === 404) {
-    return c.json(reply.body, 404);
-  }
-
-  return c.json(reply.body, 200);
-}
-
-export function failDlr(c: Context<AppBindings>) {
-  const { msgId } = c.req.param();
-  const reply = mockSetDlrStatus(msgId, "failed");
-
-  if (reply.status === 404) {
-    return c.json(reply.body, 404);
-  }
-
-  return c.json(reply.body, 200);
-}

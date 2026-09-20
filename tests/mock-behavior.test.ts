@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createTestApp } from "@/lib/create-app";
 import router from "@/routes/sms.index";
+import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 
 const client = testClient(createTestApp(router));
 
-beforeEach(async () => {
-  await router.request("/mock/reset", { method: "POST" });
+beforeEach(() => {
+  resetMockState();
 });
 
 const SEND = {
@@ -18,7 +19,7 @@ const SEND = {
 };
 
 async function issueToken(username = "testuser", password = "testpass") {
-  const res = await client.v3.v3.api.get_token.$post({ json: { username, password } });
+  const res = await client.v3.api.get_token.$post({ json: { username, password } });
   if (res.status !== 201) {
     throw new Error(`token request failed with status ${res.status}`);
   }
@@ -28,18 +29,18 @@ async function issueToken(username = "testuser", password = "testpass") {
 
 describe("getToken credential validation (TC09)", () => {
   it("issues a token for the configured credentials", async () => {
-    const res = await client.v3.v3.api.get_token.$post({
+    const res = await client.v3.api.get_token.$post({
       json: { username: "testuser", password: "testpass" },
     });
 
     expect(res.status).toBe(201);
     const data = await res.json() as Record<string, unknown>;
-    expect(String(data.access_token)).toMatch(/^mock-token-/);
+    expect(String(data.access_token)).toHaveLength(7);
     expect(data.status_code).toBe("201");
   });
 
   it("rejects invalid credentials with 401 and no token", async () => {
-    const res = await client.v3.v3.api.get_token.$post({
+    const res = await client.v3.api.get_token.$post({
       json: { username: "bogus", password: "bogus" },
     });
 
@@ -52,18 +53,18 @@ describe("getToken credential validation (TC09)", () => {
 
 describe("auth enforcement on protected endpoints (TC19)", () => {
   it("rejects send without any token", async () => {
-    const res = await client.v3.v3.api.send_sms.$post({ json: SEND });
+    const res = await client.v3.api.send_sms.$post({ json: SEND });
     expect(res.status).toBe(401);
   });
 
   it("rejects send with an invalid token", async () => {
-    const res = await client.v3.v3.api.send_sms.$post({ json: SEND, header: { authToken: "not-a-real-token" } });
+    const res = await client.v3.api.send_sms.$post({ json: SEND, header: { authToken: "not-a-real-token" } });
     expect(res.status).toBe(401);
   });
 
   it("accepts send with a token issued by getToken (and still returns 201 when DB is unavailable)", async () => {
     const token = await issueToken();
-    const res = await client.v3.v3.api.send_sms.$post({ json: SEND, header: { authToken: token } });
+    const res = await client.v3.api.send_sms.$post({ json: SEND, header: { authToken: token } });
 
     expect(res.status).toBe(201);
     const data = await res.json() as Record<string, unknown>;
@@ -72,14 +73,14 @@ describe("auth enforcement on protected endpoints (TC19)", () => {
   });
 
   it("rejects opt-out without a valid token", async () => {
-    const res = await client.v3.v3.api.opt_out.$post({
+    const res = await client.v3.api.opt_out.$post({
       json: { numbers: "+256700000099", category: "promotional", reason: "r" },
     });
     expect(res.status).toBe(401);
   });
 
   it("rejects list-opt-outs without a valid token", async () => {
-    const res = await client.v3.v3.api.opt_outs.$get({});
+    const res = await client.v3.api.opt_outs.$get({});
     expect(res.status).toBe(401);
   });
 });
@@ -87,35 +88,35 @@ describe("auth enforcement on protected endpoints (TC19)", () => {
 describe("dLR states (TC06/TC07)", () => {
   it("reports pending after send, then delivered after the mock advances it", async () => {
     const token = await issueToken();
-    const sendRes = await client.v3.v3.api.send_sms.$post({ json: SEND, header: { authToken: token } });
+    const sendRes = await client.v3.api.send_sms.$post({ json: SEND, header: { authToken: token } });
     const sent = await sendRes.json() as unknown as { msg_id: string };
     const msgId = sent.msg_id;
 
-    const pending = await client.v3.v3.api.dlr.$post({ json: { msgId }, header: { authToken: token } });
+    const pending = await client.v3.api.dlr.$post({ json: { msgId }, header: { authToken: token } });
     expect(pending.status).toBe(200);
     expect((await pending.json() as unknown as { status: string }).status).toBe("pending");
 
-    const advance = await router.request(`/mock/dlr/${msgId}/deliver`, { method: "POST" });
+    const advance = mockSetDlrStatus(msgId, "delivered");
     expect(advance.status).toBe(200);
 
-    const delivered = await client.v3.v3.api.dlr.$post({ json: { msgId }, header: { authToken: token } });
+    const delivered = await client.v3.api.dlr.$post({ json: { msgId }, header: { authToken: token } });
     expect((await delivered.json() as unknown as { status: string }).status).toBe("delivered");
   });
 
   it("reports failed after the mock marks the message failed", async () => {
     const token = await issueToken();
-    const sendRes = await client.v3.v3.api.send_sms.$post({ json: SEND, header: { authToken: token } });
+    const sendRes = await client.v3.api.send_sms.$post({ json: SEND, header: { authToken: token } });
     const msgId = (await sendRes.json() as unknown as { msg_id: string }).msg_id;
 
-    await router.request(`/mock/dlr/${msgId}/fail`, { method: "POST" });
+    mockSetDlrStatus(msgId, "failed");
 
-    const res = await client.v3.v3.api.dlr.$post({ json: { msgId }, header: { authToken: token } });
+    const res = await client.v3.api.dlr.$post({ json: { msgId }, header: { authToken: token } });
     expect((await res.json() as unknown as { status: string }).status).toBe("failed");
   });
 
   it("returns 404 for a msgId that was never sent", async () => {
     const token = await issueToken();
-    const res = await client.v3.v3.api.dlr.$post({
+    const res = await client.v3.api.dlr.$post({
       json: { msgId: "never-sent-message" },
       header: { authToken: token },
     });
@@ -129,10 +130,10 @@ describe("opt-out deduplication (TC15)", () => {
     const token = await issueToken();
     const body = { numbers: "+256700000200", category: "promotional", reason: "r" };
 
-    const first = await client.v3.v3.api.opt_out.$post({ json: body, header: { authToken: token } });
+    const first = await client.v3.api.opt_out.$post({ json: body, header: { authToken: token } });
     expect((await first.json() as { added: number }).added).toBe(1);
 
-    const second = await client.v3.v3.api.opt_out.$post({ json: body, header: { authToken: token } });
+    const second = await client.v3.api.opt_out.$post({ json: body, header: { authToken: token } });
     const secondBody = await second.json() as { added: number; already_listed: number };
     expect(secondBody.added).toBe(0);
     expect(secondBody.already_listed).toBe(1);
@@ -144,10 +145,10 @@ describe("opt-in deduplication (TC16)", () => {
     const token = await issueToken();
     const body = { numbers: "+256700000300", category: "promotional", reason: "r" };
 
-    const first = await client.v3.v3.api.opt_in.$post({ json: body, header: { authToken: token } });
+    const first = await client.v3.api.opt_in.$post({ json: body, header: { authToken: token } });
     expect((await first.json() as { added: number }).added).toBe(1);
 
-    const second = await client.v3.v3.api.opt_in.$post({ json: body, header: { authToken: token } });
+    const second = await client.v3.api.opt_in.$post({ json: body, header: { authToken: token } });
     const secondBody = await second.json() as { added: number; already_listed: number };
     expect(secondBody.added).toBe(0);
     expect(secondBody.already_listed).toBe(1);
@@ -157,7 +158,7 @@ describe("opt-in deduplication (TC16)", () => {
 describe("list opt-outs reflects mock state", () => {
   it("returns an empty array when no opt-outs exist", async () => {
     const token = await issueToken();
-    const res = await client.v3.v3.api.opt_outs.$get({ header: { authToken: token } });
+    const res = await client.v3.api.opt_outs.$get({ header: { authToken: token } });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
@@ -165,12 +166,12 @@ describe("list opt-outs reflects mock state", () => {
 
   it("returns the opted-out number after an opt-out", async () => {
     const token = await issueToken();
-    await client.v3.v3.api.opt_out.$post({
+    await client.v3.api.opt_out.$post({
       json: { numbers: "+256700000400", category: "promotional", reason: "r" },
       header: { authToken: token },
     });
 
-    const res = await client.v3.v3.api.opt_outs.$get({ header: { authToken: token } });
+    const res = await client.v3.api.opt_outs.$get({ header: { authToken: token } });
     expect(res.status).toBe(200);
     const data = await res.json() as Array<{ phone_number: string }>;
     expect(data).toHaveLength(1);
@@ -178,18 +179,17 @@ describe("list opt-outs reflects mock state", () => {
   });
 });
 
-describe("mock reset control route", () => {
+describe("mock state reset", () => {
   it("clears state so an opt-out can be added again", async () => {
     const token = await issueToken();
     const body = { numbers: "+256700000500", category: "promotional", reason: "r" };
 
-    await client.v3.v3.api.opt_out.$post({ json: body, header: { authToken: token } });
+    await client.v3.api.opt_out.$post({ json: body, header: { authToken: token } });
 
-    const reset = await router.request("/mock/reset", { method: "POST" });
-    expect(reset.status).toBe(200);
+    resetMockState();
 
     const freshToken = await issueToken();
-    const after = await client.v3.v3.api.opt_out.$post({ json: body, header: { authToken: freshToken } });
+    const after = await client.v3.api.opt_out.$post({ json: body, header: { authToken: freshToken } });
     expect((await after.json() as { added: number }).added).toBe(1);
   });
 });

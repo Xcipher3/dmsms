@@ -12,7 +12,7 @@ const client = testClient(createTestApp(index));
 const smsClient = testClient(createTestApp(router));
 
 async function issueToken() {
-  const response = await smsClient.v3.v3.api.get_token.$post({
+  const response = await smsClient.v3.api.get_token.$post({
     json: { username: "testuser", password: "testpass" },
   });
   const data = await response.json() as { access_token: string };
@@ -45,7 +45,7 @@ describe("db logger", () => {
     await db.delete(requestLogs).where(eq(requestLogs.id, row.id));
   });
 
-  it("stores requestBody and responseBody JSON for POST /v3/v3/api/send_sms/", { timeout: 20_000 }, async () => {
+  it("stores requestBody and responseBody JSON for POST /v3/api/send_sms/", { timeout: 20_000 }, async () => {
     const payload = {
       msg: "hello from db-logger test",
       numbers: "+256700999999",
@@ -53,14 +53,14 @@ describe("db logger", () => {
       category: "marketing",
     };
     const token = await issueToken();
-    const res = await smsClient.v3.v3.api.send_sms.$post({ json: payload, header: { authToken: token } });
+    const res = await smsClient.v3.api.send_sms.$post({ json: payload, header: { authToken: token } });
     expect(res.status).toBe(201);
 
     const requestId = res.headers.get("x-request-id")!;
     const row = await waitForLogByRequestId(requestId);
 
     expect(row.method).toBe("POST");
-    expect(row.path).toBe("/v3/v3/api/send_sms");
+    expect(row.path).toBe("/v3/api/send_sms");
     expect(row.requestBody).toEqual(payload);
     expect(row.responseBody).toEqual(
       expect.objectContaining({

@@ -6,6 +6,7 @@ import * as handlers from "./sms.handlers";
 import * as routes from "./sms.routes";
 
 const router = createRouter()
+  .openapi(routes.getToken, handlers.getToken)
   .openapi(routes.sendSms, handlers.sendSms, (result, c) => {
     if (!result.success) {
       return c.json(
@@ -16,12 +17,8 @@ const router = createRouter()
     return undefined;
   })
   .openapi(routes.getDlr, handlers.getDlr)
-  .openapi(routes.getToken, handlers.getToken)
-  .openapi(routes.optOut, handlers.optOut)
   .openapi(routes.optIn, handlers.optIn)
-  .openapi(routes.listOptOuts, handlers.listOptOuts)
-  .post("/mock/reset", handlers.resetMock)
-  .post("/mock/dlr/:msgId/deliver", handlers.deliverDlr)
-  .post("/mock/dlr/:msgId/fail", handlers.failDlr);
+  .openapi(routes.optOut, handlers.optOut)
+  .openapi(routes.listOptOuts, handlers.listOptOuts);
 
 export default router;

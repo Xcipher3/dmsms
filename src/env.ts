@@ -19,7 +19,7 @@ const EnvSchema = z.object({
   DATABASE_AUTH_TOKEN: z.string().optional(),
   BLASTA_USERNAME: z.string().min(1),
   BLASTA_PASSWORD: z.string().min(1),
-  BLASTA_BASE_URL: z.string().url().default("https://sms.dmarkmobile.com/v3/v3/api"),
+  BLASTA_BASE_URL: z.string().url().default("https://sms.dmarkmobile.com/v3/api"),
 }).superRefine((input, ctx) => {
   if (input.NODE_ENV === "production" && !input.DATABASE_AUTH_TOKEN) {
     ctx.addIssue({
