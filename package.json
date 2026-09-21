@@ -11,7 +11,6 @@
     "lint:fix": "eslint . --fix",
     "test": "cross-env NODE_ENV=test vitest",
     "build": "tsc && tsc-alias"
-
   },
   "dependencies": {
     "@hono/node-server": "^1.18.1",
@@ -26,6 +25,7 @@
     "hono-pino": "^0.10.1",
     "pino": "^9.7.0",
     "pino-pretty": "^13.1.1",
+    "pino-roll": "^4.0.0",
     "stoker": "2.0.1",
     "zod": "^4.0.14"
   },

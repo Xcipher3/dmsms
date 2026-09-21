@@ -44,6 +44,9 @@ importers:
       pino-pretty:
         specifier: ^13.1.1
         version: 13.1.1
+      pino-roll:
+        specifier: ^4.0.0
+        version: 4.0.0
       stoker:
         specifier: 2.0.1
         version: 2.0.1(@asteasolutions/zod-to-openapi@8.1.0(zod@4.0.14))(@hono/zod-openapi@1.6.3(hono@4.9.6)(zod@4.0.14))(hono@4.9.6)(openapi3-ts@4.5.0)
@@ -1281,6 +1284,9 @@ packages:
     resolution: {integrity: sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A==}
     engines: {node: '>= 12'}
 
+  date-fns@4.4.0:
+    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
+
   dateformat@4.6.3:
     resolution: {integrity: sha512-2P0p0pFGzHS5EMnhdxQi7aJN+iMheud0UhG4dlE1DLAlvL8JHjJJTX/CSm4JXwV0Ka5nGk3zC5mcb5bUQUxxMA==}
 
@@ -2260,6 +2266,9 @@ packages:
     resolution: {integrity: sha512-TNNEOg0eA0u+/WuqH0MH0Xui7uqVk9D74ESOpjtebSQYbNWJk/dIxCXIxFsNfeN53JmtWqYHP2OrIZjT/CBEnA==}
     hasBin: true
 
+  pino-roll@4.0.0:
+    resolution: {integrity: sha512-axI1aQaIxXdw1F4OFFli1EDxIrdYNGLowkw/ZoZogX8oCSLHUghzwVVXUS8U+xD/Savwa5IXpiXmsSGKFX/7Sg==}
+
   pino-std-serializers@7.0.0:
     resolution: {integrity: sha512-e906FRY0+tV27iq4juKzSYPbUj2do2X2JX4EzSca1631EB2QJQUqGbDuERal7LCtOpxl6x3+nvo9NPZcmjkiFA==}
 
@@ -2813,7 +2822,7 @@ snapshots:
 
   '@asteasolutions/zod-to-openapi@8.1.0(zod@4.0.14)':
     dependencies:
-      openapi3-ts: 4.5.0
+      openapi3-ts: 4.6.1
       zod: 4.0.14
     optional: true
 
@@ -3749,6 +3758,8 @@ snapshots:
 
   data-uri-to-buffer@4.0.1:
     optional: true
+
+  date-fns@4.4.0: {}
 
   dateformat@4.6.3: {}
 
@@ -4920,6 +4931,11 @@ snapshots:
       secure-json-parse: 4.0.0
       sonic-boom: 4.2.0
       strip-json-comments: 5.0.2
+
+  pino-roll@4.0.0:
+    dependencies:
+      date-fns: 4.4.0
+      sonic-boom: 4.2.0
 
   pino-std-serializers@7.0.0: {}
 

@@ -242,7 +242,8 @@ Logging is handled by `hono-pino` (configured in `src/middlewares/pino-logger.ts
 
 - Log level is controlled by the `LOG_LEVEL` environment variable.
 - Logs are human-readable (pretty-printed) during development and raw JSON in production.
-- Set `LOG_LEVEL=silent` to disable logging entirely (the test suite does this).
+- Every request is also written to JSON files in `logs/` by `src/middlewares/db-logger.ts`, one file per day (e.g. `logs/requests.2026-09-21.1.log`), rolled automatically by `pino-roll`. Each entry is timestamped by pino and includes the request ID, method, path, status, latency, request body and response body. The `logs/` directory is created on demand and is git-ignored.
+- Set `LOG_LEVEL=silent` to disable logging entirely (both console and file).
 - Every request is also persisted to the `request_logs` table by `src/middlewares/db-logger.ts`. The insert runs in the background after the response is produced and is fail-silent: a database error is logged via pino and never affects the API response. Each row stores the incoming request body and the outgoing response body (`request_body`, `response_body` as `jsonb`, `null` when a body is absent or not JSON).
 
 Log levels in order: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`.

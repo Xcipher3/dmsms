@@ -86,6 +86,13 @@ export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
       accessToken: reply.body.access_token,
       firstName: reply.body.first_name,
       lastName: reply.body.last_name,
+    }).onConflictDoUpdate({
+      target: authTokens.username,
+      set: {
+        accessToken: reply.body.access_token,
+        firstName: reply.body.first_name,
+        lastName: reply.body.last_name,
+      },
     });
   });
 
