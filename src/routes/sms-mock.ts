@@ -1,6 +1,7 @@
 import * as HttpStatusCodes from "stoker/http-status-codes";
 
 import env from "@/env";
+import { toEatIso } from "@/lib/eat-time";
 
 export type DlrStatus = "pending" | "delivered" | "failed";
 
@@ -196,7 +197,7 @@ export function mockSendSms(authToken: string | undefined): SendSmsReply {
   return guarded(() => {
     const msgId = state.nextMsgId();
     state.messages.set(msgId, {
-      submittedAt: new Date().toISOString(),
+      submittedAt: toEatIso(),
       status: "pending",
     });
     return {
@@ -265,7 +266,7 @@ function mockOpt(
       phoneNumber: body.numbers,
       category: body.category,
       reason: body.reason,
-      createdAt: new Date().toISOString(),
+      createdAt: toEatIso(),
     });
     return {
       status: HttpStatusCodes.OK,

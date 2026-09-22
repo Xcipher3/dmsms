@@ -1,6 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Hook } from "@hono/zod-openapi";
-import type { Hono } from "hono";
+import type { Hono, Schema } from "hono";
 import { requestId } from "hono/request-id";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
@@ -44,6 +44,6 @@ export default function createApp() {
   return app;
 }
 
-export function createTestApp(router: Hono<AppBindings, any, "/">) {
-  return createApp().route("/", router as unknown as OpenAPIHono<AppBindings, any, "/">);
+export function createTestApp<S extends Schema>(router: Hono<AppBindings, S, "/">) {
+  return createApp().route("/", router);
 }

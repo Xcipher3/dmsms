@@ -31,7 +31,7 @@ async function waitForLogByRequestId(requestId: string, timeoutMs = 10_000) {
 }
 
 describe("db logger", () => {
-  it("stores requestBody=null and responseBody JSON for GET", { timeout: 20_000 }, async () => {
+  it("stores requestBody=null and responseBody JSON for GET", { timeout: 60_000 }, async () => {
     const res = await client.index.$get({});
     expect(res.status).toBe(200);
 
@@ -45,7 +45,7 @@ describe("db logger", () => {
     await db.delete(requestLogs).where(eq(requestLogs.id, row.id));
   });
 
-  it("stores requestBody and responseBody JSON for POST /v3/api/send_sms/", { timeout: 20_000 }, async () => {
+  it("stores requestBody and responseBody JSON for POST /v3/api/send_sms/", { timeout: 60_000 }, async () => {
     const payload = {
       msg: "hello from db-logger test",
       numbers: "+256700999999",

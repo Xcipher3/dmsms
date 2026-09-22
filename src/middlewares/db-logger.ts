@@ -8,10 +8,12 @@ import type { AppBindings } from "@/lib/types";
 import db from "@/db";
 import { requestLogs } from "@/db/schema";
 import env from "@/env";
+import { toEatIso } from "@/lib/eat-time";
 
 const fileLogger = pino(
   {
     level: env.LOG_LEVEL || "info",
+    timestamp: () => `,"time":"${toEatIso()}"`,
   },
   env.LOG_LEVEL === "silent"
     ? undefined

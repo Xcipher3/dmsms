@@ -48,6 +48,7 @@ describe("blasta SMS mock responses", () => {
         dlr_url: "",
         category: "",
       },
+      header: {},
     });
 
     expect(response.status).toBe(400);
@@ -98,6 +99,24 @@ describe("blasta SMS mock responses", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ message: "Not Found" });
+  });
+
+  it("returns submitted_at in east african time", async () => {
+    const token = await issueToken();
+    const send = await client.v3.api.send_sms.$post({
+      json: {
+        msg: "mock test message",
+        numbers: "+256700990001",
+        dlr_url: "https://example.com/dlr",
+        category: "promotional",
+      },
+      header: { authToken: token },
+    });
+    const { msg_id } = await send.json() as unknown as { msg_id: string };
+
+    const dlr = await client.v3.api.dlr.$post({ json: { msgId: msg_id }, header: { authToken: token } });
+    const body = await dlr.json() as unknown as { submitted_at: string };
+    expect(body.submitted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+03:00$/);
   });
 
   it("returns the getToken mock payload", async () => {
@@ -166,5 +185,22 @@ describe("blasta SMS mock responses", () => {
     const data = await filled.json() as { phone_number: string }[];
     expect(data.length).toBe(1);
     expect(data[0].phone_number).toBe("+256700990004");
+  });
+
+  it("returns created_at in east african time for opt records", async () => {
+    const token = await issueToken();
+    await client.v3.api.opt_out.$post({
+      json: {
+        numbers: "+256700990005",
+        category: "promotional",
+        reason: "mock opt-out",
+      },
+      header: { authToken: token },
+    });
+
+    const list = await client.v3.api.opt_outs.$get({ header: { authToken: token } });
+    const data = await list.json() as { created_at: string }[];
+    expect(data).toHaveLength(1);
+    expect(data[0].created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+03:00$/);
   });
 });

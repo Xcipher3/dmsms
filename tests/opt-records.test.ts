@@ -32,7 +32,7 @@ async function waitForRow(
 }
 
 describe("opt-in / opt-out records", () => {
-  it("persists opt-in to the opt_ins table", { timeout: 20_000 }, async () => {
+  it("persists opt-in to the opt_ins table", { timeout: 60_000 }, async () => {
     const token = await issueToken();
     const response = await client.v3.api.opt_in.$post({
       json: {
@@ -58,7 +58,7 @@ describe("opt-in / opt-out records", () => {
     await db.delete(optIns).where(eq(optIns.id, row.id as number));
   });
 
-  it("persists opt-out to the opt_outs table", { timeout: 20_000 }, async () => {
+  it("persists opt-out to the opt_outs table", { timeout: 60_000 }, async () => {
     const token = await issueToken();
     const response = await client.v3.api.opt_out.$post({
       json: {

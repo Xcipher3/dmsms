@@ -1,7 +1,10 @@
+import { sql } from "drizzle-orm";
 import { integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
 import { toZodV4SchemaTyped } from "@/lib/zod-utils";
+
+const eatNow = () => sql`now() AT TIME ZONE 'Africa/Nairobi'`;
 
 export const smsMessages = pgTable("sms_messages", {
   id: serial("id").primaryKey(),
@@ -11,9 +14,9 @@ export const smsMessages = pgTable("sms_messages", {
   dlrUrl: text("dlr_url").notNull(),
   category: text().notNull(),
   status: text().default("pending"),
-  sentAt: timestamp("sent_at").defaultNow(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  sentAt: timestamp("sent_at").default(eatNow()),
+  createdAt: timestamp("created_at").default(eatNow()),
+  updatedAt: timestamp("updated_at").default(eatNow()),
 });
 
 export const authTokens = pgTable("auth_tokens", {
@@ -23,7 +26,7 @@ export const authTokens = pgTable("auth_tokens", {
   firstName: text("first_name"),
   lastName: text("last_name"),
   expiresAt: timestamp("expires_at"),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: timestamp("created_at").default(eatNow()),
 });
 
 export const optOuts = pgTable("opt_outs", {
@@ -32,7 +35,7 @@ export const optOuts = pgTable("opt_outs", {
   category: text().notNull(),
   reason: text().notNull(),
   source: text().notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: timestamp("created_at").default(eatNow()),
 });
 
 export const optIns = pgTable("opt_ins", {
@@ -41,7 +44,7 @@ export const optIns = pgTable("opt_ins", {
   category: text().notNull(),
   reason: text().notNull(),
   source: text().notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: timestamp("created_at").default(eatNow()),
 });
 
 export const requestLogs = pgTable("request_logs", {
@@ -56,7 +59,7 @@ export const requestLogs = pgTable("request_logs", {
   error: text(),
   requestBody: jsonb("request_body"),
   responseBody: jsonb("response_body"),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: timestamp("created_at").default(eatNow()),
 });
 
 export const selectSmsMessagesSchema = toZodV4SchemaTyped(createSelectSchema(smsMessages));

@@ -47,6 +47,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
           dlr_url: "",
           category: "",
         },
+        header: {},
       });
 
       expect(response.status).toBe(400);
@@ -62,6 +63,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
           dlr_url: "https://example.com/dlr",
           category: "promotional",
         },
+        header: {},
       });
 
       expect(response.status).toBe(401);
@@ -158,6 +160,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
           category: "",
           reason: "",
         },
+        header: {},
       });
 
       expect(response.status).toBe(400);

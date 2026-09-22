@@ -53,7 +53,7 @@ describe("getToken credential validation (TC09)", () => {
 
 describe("auth enforcement on protected endpoints (TC19)", () => {
   it("rejects send without any token", async () => {
-    const res = await client.v3.api.send_sms.$post({ json: SEND });
+    const res = await client.v3.api.send_sms.$post({ json: SEND, header: {} });
     expect(res.status).toBe(401);
   });
 
@@ -75,12 +75,13 @@ describe("auth enforcement on protected endpoints (TC19)", () => {
   it("rejects opt-out without a valid token", async () => {
     const res = await client.v3.api.opt_out.$post({
       json: { numbers: "+256700000099", category: "promotional", reason: "r" },
+      header: {},
     });
     expect(res.status).toBe(401);
   });
 
   it("rejects list-opt-outs without a valid token", async () => {
-    const res = await client.v3.api.opt_outs.$get({});
+    const res = await client.v3.api.opt_outs.$get({ header: {} });
     expect(res.status).toBe(401);
   });
 });
