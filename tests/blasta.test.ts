@@ -1,6 +1,7 @@
 import { testClient } from "hono/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import env from "@/env";
 import { createTestApp } from "@/lib/create-app";
 import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 import router from "@/routes/sms.index";
@@ -18,7 +19,39 @@ const SEND = {
   category: "promotional",
 };
 
+const BLASTA_USERNAME = env.BLASTA_USERNAME;
+const BLASTA_PASSWORD = env.BLASTA_PASSWORD;
+
 describe("blasta SMS API - End-to-End Tests", () => {
+  describe("generate Token", () => {
+    it("should return mock access token", async () => {
+      const response = await client.v3.api.get_token.$post({
+        json: {
+          username: BLASTA_USERNAME,
+          password: BLASTA_PASSWORD,
+        },
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json() as { access_token: string };
+      expect(data.access_token).toHaveLength(7);
+      expect(data).toHaveProperty("description", "Token generated");
+    });
+
+    it("should reject invalid credentials", async () => {
+      const response = await client.v3.api.get_token.$post({
+        json: {
+          username: "wrong",
+          password: "wrong",
+        },
+      });
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data).toHaveProperty("status_code", "401");
+    });
+  });
+
   describe("send SMS", () => {
     it("should return success response with mock data", async () => {
       const response = await client.v3.api.send_sms.$post({ json: SEND });

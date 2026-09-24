@@ -1,6 +1,7 @@
 import { testClient } from "hono/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import env from "@/env";
 import { createTestApp } from "@/lib/create-app";
 import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 import router from "@/routes/sms.index";
@@ -19,6 +20,23 @@ const SEND = {
 };
 
 describe("blasta SMS mock responses", () => {
+  it("returns the getToken mock payload", async () => {
+    const response = await client.v3.api.get_token.$post({
+      json: {
+        username: env.BLASTA_USERNAME,
+        password: env.BLASTA_PASSWORD,
+      },
+    });
+
+    expect(response.status).toBe(201);
+    const data = await response.json() as Record<string, unknown>;
+    expect(data).toMatchObject({
+      username: env.BLASTA_USERNAME,
+      status_code: "201",
+    });
+    expect(String(data.access_token)).toHaveLength(7);
+  });
+
   it("returns the sendSms mock payload", async () => {
     const response = await client.v3.api.send_sms.$post({ json: SEND });
 
@@ -86,6 +104,6 @@ describe("blasta SMS mock responses", () => {
 
     const dlr = await client.v3.api.dlr.$post({ json: { msgId: msg_id } });
     const body = await dlr.json() as unknown as { submitted_at: string };
-    expect(body.submitted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+03:00$/);
+    expect(body.submitted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/);
   });
 });

@@ -70,6 +70,16 @@ export const smsEvents = pgTable("sms_events", {
   index("sms_events_created_at_idx").on(t.createdAt),
 ]);
 
+export const authTokens = pgTable("auth_tokens", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  username: text().notNull().unique(),
+  accessToken: text("access_token").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").default(eatNow()),
+});
+
 export const idempotencyKeys = pgTable("idempotency_keys", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   idempotencyKey: text("idempotency_key").notNull(),

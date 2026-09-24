@@ -5,13 +5,13 @@ import { and, eq } from "drizzle-orm";
 import type { AppBindings, AppRouteHandler } from "@/lib/types";
 
 import db from "@/db";
-import { idempotencyKeys, smsEvents, smsMessages, smsRecipients } from "@/db/schema";
+import { authTokens, idempotencyKeys, smsEvents, smsMessages, smsRecipients } from "@/db/schema";
 import { toEatIso } from "@/lib/eat-time";
 
 import type { DlrStatus, SendOkBody } from "./sms-mock";
-import type { GetDlrRoute, SendSmsRoute } from "./sms.routes";
+import type { GetDlrRoute, GetTokenRoute, SendSmsRoute } from "./sms.routes";
 
-import { DLR_DESCRIPTIONS, mockGetDlr, mockSendSms } from "./sms-mock";
+import { DLR_DESCRIPTIONS, mockGetDlr, mockGetToken, mockSendSms } from "./sms-mock";
 
 const SEND_SMS_ENDPOINT = "POST /v3/api/send_sms";
 
@@ -23,6 +23,33 @@ async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unkn
     c.get("logger").error({ error }, "DB unavailable - request satisfied from mock state");
   }
 }
+
+export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
+  const { username, password } = c.req.valid("json");
+  const reply = mockGetToken(username, password);
+
+  if (reply.status === 401) {
+    return c.json(reply.body, 401);
+  }
+
+  await bestEffort(c, async () => {
+    await db.insert(authTokens).values({
+      username,
+      accessToken: reply.body.access_token,
+      firstName: reply.body.first_name,
+      lastName: reply.body.last_name,
+    }).onConflictDoUpdate({
+      target: authTokens.username,
+      set: {
+        accessToken: reply.body.access_token,
+        firstName: reply.body.first_name,
+        lastName: reply.body.last_name,
+      },
+    });
+  });
+
+  return c.json(reply.body, 201);
+};
 
 export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
   const data = c.req.valid("json");

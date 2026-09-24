@@ -6,6 +6,7 @@ import * as handlers from "./sms.handlers";
 import * as routes from "./sms.routes";
 
 const router = createRouter()
+  .openapi(routes.getToken, handlers.getToken)
   .openapi(routes.sendSms, handlers.sendSms, (result, c) => {
     if (!result.success) {
       return c.json(

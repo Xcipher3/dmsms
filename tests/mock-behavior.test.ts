@@ -1,6 +1,7 @@
 import { testClient } from "hono/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import env from "@/env";
 import { createTestApp } from "@/lib/create-app";
 import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 import router from "@/routes/sms.index";
@@ -17,6 +18,33 @@ const SEND = {
   dlr_url: "https://example.com/dlr",
   category: "promotional",
 };
+
+const BLASTA_USERNAME = env.BLASTA_USERNAME;
+const BLASTA_PASSWORD = env.BLASTA_PASSWORD;
+
+describe("getToken credential validation (TC09)", () => {
+  it("issues a token for the configured credentials", async () => {
+    const res = await client.v3.api.get_token.$post({
+      json: { username: BLASTA_USERNAME, password: BLASTA_PASSWORD },
+    });
+
+    expect(res.status).toBe(201);
+    const data = await res.json() as Record<string, unknown>;
+    expect(String(data.access_token)).toHaveLength(7);
+    expect(data.status_code).toBe("201");
+  });
+
+  it("rejects invalid credentials with 401 and no token", async () => {
+    const res = await client.v3.api.get_token.$post({
+      json: { username: "bogus", password: "bogus" },
+    });
+
+    expect(res.status).toBe(401);
+    const data = await res.json() as Record<string, unknown>;
+    expect(data.access_token).toBe("");
+    expect(data.status_code).toBe("401");
+  });
+});
 
 describe("dLR states (TC06/TC07)", () => {
   it("reports pending after send, then delivered after the mock advances it", async () => {

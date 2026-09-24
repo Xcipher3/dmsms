@@ -8,6 +8,13 @@
       "when": 1790171362469,
       "tag": "0000_giant_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790265814354,
+      "tag": "0001_late_snowbird",
+      "breakpoints": true
     }
   ]
 }
