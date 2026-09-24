@@ -3,7 +3,7 @@ import { testClient } from "hono/testing";
 import { describe, expect, it } from "vitest";
 
 import db from "@/db";
-import { requestLogs, smsMessages } from "@/db/schema";
+import { apiRequests, smsMessages } from "@/db/schema";
 import { createTestApp } from "@/lib/create-app";
 import index from "@/routes/index.route";
 import router from "@/routes/sms.index";
@@ -11,18 +11,10 @@ import router from "@/routes/sms.index";
 const client = testClient(createTestApp(index));
 const smsClient = testClient(createTestApp(router));
 
-async function issueToken() {
-  const response = await smsClient.v3.api.get_token.$post({
-    json: { username: "testuser", password: "testpass" },
-  });
-  const data = await response.json() as { access_token: string };
-  return data.access_token;
-}
-
 async function waitForLogByRequestId(requestId: string, timeoutMs = 10_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const rows = await db.select().from(requestLogs).where(eq(requestLogs.requestId, requestId)).limit(1);
+    const rows = await db.select().from(apiRequests).where(eq(apiRequests.requestId, requestId)).limit(1);
     if (rows.length > 0)
       return rows[0];
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -42,7 +34,7 @@ describe("db logger", () => {
     expect(row.requestBody).toBeNull();
     expect(row.responseBody).toEqual({ message: "Blasta SMS API" });
 
-    await db.delete(requestLogs).where(eq(requestLogs.id, row.id));
+    await db.delete(apiRequests).where(eq(apiRequests.id, row.id));
   });
 
   it("stores requestBody and responseBody JSON for POST /v3/api/send_sms/", { timeout: 60_000 }, async () => {
@@ -52,8 +44,7 @@ describe("db logger", () => {
       dlr_url: "https://example.com/dlr",
       category: "marketing",
     };
-    const token = await issueToken();
-    const res = await smsClient.v3.api.send_sms.$post({ json: payload, header: { authToken: token } });
+    const res = await smsClient.v3.api.send_sms.$post({ json: payload });
     expect(res.status).toBe(201);
 
     const requestId = res.headers.get("x-request-id")!;
@@ -70,7 +61,7 @@ describe("db logger", () => {
     );
 
     const msgId = (row.responseBody as Record<string, unknown>).msg_id as string;
-    await db.delete(requestLogs).where(eq(requestLogs.id, row.id));
+    await db.delete(apiRequests).where(eq(apiRequests.id, row.id));
     await db.delete(smsMessages).where(eq(smsMessages.msgId, msgId));
   });
 });

@@ -19,8 +19,8 @@ The API proxies SMS operations (sending, delivery reports, auth tokens, opt-in/o
 
 ## Features
 
-- Feed-through proxy to the Blasta v3 SMS gateway (`/send_sms/`, `/dlr/`, `/get_token/`, `/opt_out/`, `/opt_in/`, `/opt_outs/`)
-- Local audit records for every SMS sent, token issued, and opt-in/out change
+- Sends SMS through the Blasta v3 SMS gateway and checks delivery reports (`/send_sms/`, `/dlr/`)
+- Local audit records for every SMS sent
 - Fully documented type-safe routes with `@hono/zod-openapi`
 - Interactive API docs served with Scalar
 - Structured logging with pino / hono-pino
@@ -77,15 +77,15 @@ pnpm dev
 
 All environment variables are validated at startup against a zod schema in `src/env.ts`. The application will not start if required variables are missing or invalid.
 
-| Variable              | Required        | Default                                 | Description                                                                       |
-| --------------------- | --------------- | --------------------------------------- | --------------------------------------------------------------------------------- |
-| `NODE_ENV`            | no              | `development`                           | Runtime environment. When set to `test`, `.env.test` is loaded instead of `.env`. |
-| `PORT`                | no              | `9999`                                  | Port the server binds to.                                                         |
-| `LOG_LEVEL`           | yes             | —                                       | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, or `silent`.  |
-| `DATABASE_URL`        | yes             | —                                       | Postgres connection URL.                                                          |
-| `DATABASE_AUTH_TOKEN` | production only | —                                       | Neon auth token; required when `NODE_ENV=production`.                             |
-| `BLASTA_USERNAME`     | yes             | —                                       | Blasta account username.                                                          |
-| `BLASTA_PASSWORD`     | yes             | —                                       | Blasta account password.                                                          |
+| Variable              | Required        | Default                              | Description                                                                       |
+| --------------------- | --------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
+| `NODE_ENV`            | no              | `development`                        | Runtime environment. When set to `test`, `.env.test` is loaded instead of `.env`. |
+| `PORT`                | no              | `9999`                               | Port the server binds to.                                                         |
+| `LOG_LEVEL`           | yes             | —                                    | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, or `silent`.  |
+| `DATABASE_URL`        | yes             | —                                    | Postgres connection URL.                                                          |
+| `DATABASE_AUTH_TOKEN` | production only | —                                    | Neon auth token; required when `NODE_ENV=production`.                             |
+| `BLASTA_USERNAME`     | yes             | —                                    | Blasta account username.                                                          |
+| `BLASTA_PASSWORD`     | yes             | —                                    | Blasta account password.                                                          |
 | `BLASTA_BASE_URL`     | no              | `https://sms.dmarkmobile.com/v3/api` | Base URL of the Blasta v3 API that all traffic is proxied to.                     |
 
 Example `.env`:
@@ -105,14 +105,11 @@ BLASTA_BASE_URL=https://sms.dmarkmobile.com/v3/api
 
 The API uses Postgres via the [Neon serverless driver](https://neon.tech/docs/guides/neon-serverless-driver). Drizzle schema lives in `src/db/schema.ts`.
 
-Five tables are maintained locally:
+Two tables are maintained locally:
 
 | Table          | Purpose                                                                            | Written by                        |
 | -------------- | ---------------------------------------------------------------------------------- | --------------------------------- |
 | `sms_messages` | Audit trail of every SMS sent through the wrapper                                  | `POST /v3/api/send_sms/`          |
-| `auth_tokens`  | Issued access tokens and the account that requested them                           | `POST /v3/api/get_token/`         |
-| `opt_outs`     | Opt-out records and their reason + source                                          | `POST /v3/api/opt_out/`           |
-| `opt_ins`      | Opt-in records and their reason + source                                           | `POST /v3/api/opt_in/`            |
 | `request_logs` | Every HTTP request: method, path, status, latency, IP, request + response payloads | All routes (db-logger middleware) |
 
 Apply schema changes to the database:
@@ -187,36 +184,21 @@ Server is running on port http://localhost:9999
 
 Interactive API documentation is available at `GET /reference` (Scalar) and the raw OpenAPI spec at `GET /doc`.
 
-| Method | Path            | Description                               | Auth header | Writes to DB   |
-| ------ | --------------- | ----------------------------------------- | ----------- | -------------- |
-| `GET`  | `/`             | API index / health info                   | no          | no             |
-| `GET`  | `/doc`          | OpenAPI 3.0 specification                 | no          | no             |
-| `GET`  | `/reference`    | Scalar interactive API docs               | no          | no             |
-| `POST` | `/v3/api/get_token/`| Request a new access token                | no          | `auth_tokens`  |
-| `POST` | `/v3/api/send_sms/` | Send an SMS via Blasta, record it locally | yes         | `sms_messages` |
-| `POST` | `/v3/api/dlr/`      | Check delivery status of a message        | yes         | no             |
-| `POST` | `/v3/api/opt_in/`   | Opt phone numbers back in                 | yes         | `opt_ins`      |
-| `POST` | `/v3/api/opt_out/`  | Opt phone numbers out of a category       | yes         | `opt_outs`     |
-| `GET`  | `/v3/api/opt_outs/` | List opt-out records                      | yes         | no             |
+| Method | Path                | Description                               | Writes to DB   |
+| ------ | ------------------- | ----------------------------------------- | -------------- |
+| `GET`  | `/`                 | API index / health info                   | no             |
+| `GET`  | `/doc`              | OpenAPI 3.0 specification                 | no             |
+| `GET`  | `/reference`        | Scalar interactive API docs               | no             |
+| `POST` | `/v3/api/send_sms/` | Send an SMS via Blasta, record it locally | `sms_messages` |
+| `POST` | `/v3/api/dlr/`      | Check delivery status of a message        | no             |
 
-Request bodies for `POST`/`PATCH` routes are validated with zod. `POST /v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure; all other routes return `500` with the default zod error structure.
-
-### Authentication
-
-All routes expect the Blasta auth token via a header, except `POST /v3/api/get_token/` (which exchanges username/password for a token):
-
-```sh
-authToken: <your_token>
-```
-
-An `Authorization: Bearer <token>` header is also accepted.
+Request bodies for `POST` routes are validated with zod. `POST /v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure.
 
 ### Example: send an SMS
 
 ```sh
 curl -X POST http://localhost:9999/v3/api/send_sms/ \
   -H "Content-Type: application/json" \
-  -H "authToken: <your_token>" \
   -d '{
     "msg": "Hello from Blasta!",
     "numbers": "+256770123456",
@@ -225,14 +207,13 @@ curl -X POST http://localhost:9999/v3/api/send_sms/ \
   }'
 ```
 
-### Example: generate a token
+### Example: check a delivery report
 
 ```sh
-curl -X POST http://localhost:9999/v3/api/get_token/ \
+curl -X POST http://localhost:9999/v3/api/dlr/ \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "your_username",
-    "password": "your_password"
+    "msgId": "mock-msg-001"
   }'
 ```
 
@@ -257,7 +238,7 @@ src/
 ├── env.ts                    # Zod-validated environment variables
 ├── db/
 │   ├── index.ts              # Drizzle + Neon client
-│   └── schema.ts             # Drizzle schema for the three tables
+│   └── schema.ts             # Drizzle schema
 ├── lib/
 │   ├── create-app.ts         # createApp / createRouter / createTestApp factories
 │   ├── configure-open-api.ts # OpenAPI info + Scalar reference endpoint

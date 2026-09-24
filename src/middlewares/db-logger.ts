@@ -6,7 +6,7 @@ import pino from "pino";
 import type { AppBindings } from "@/lib/types";
 
 import db from "@/db";
-import { requestLogs } from "@/db/schema";
+import { apiRequests } from "@/db/schema";
 import env from "@/env";
 import { toEatIso } from "@/lib/eat-time";
 
@@ -43,6 +43,17 @@ function parseJson(text: string): unknown {
   }
 }
 
+const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "x-api-key"]);
+
+function safeHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    out[lower] = REDACTED_HEADERS.has(lower) ? "[REDACTED]" : value;
+  });
+  return out;
+}
+
 export function dbLogger(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     const startedAt = performance.now();
@@ -50,15 +61,18 @@ export function dbLogger(): MiddlewareHandler<AppBindings> {
     await next();
     const durationMs = Math.round(performance.now() - startedAt);
     const responseBody = parseJson(await c.res.clone().text());
+    const query = new URL(c.req.url).searchParams.toString();
 
     const record = {
       requestId: c.get("requestId"),
       method: c.req.method,
       path: c.req.path,
+      query: query || null,
       statusCode: c.res.status,
       durationMs,
       ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip"),
       userAgent: c.req.header("user-agent"),
+      headers: safeHeaders(c.req.raw.headers),
       error: c.error?.message,
       requestBody,
       responseBody,
@@ -66,7 +80,7 @@ export function dbLogger(): MiddlewareHandler<AppBindings> {
 
     fileLogger.info(record);
 
-    db.insert(requestLogs).values(record).catch((err: unknown) => {
+    db.insert(apiRequests).values(record).catch((err: unknown) => {
       c.get("logger").error({ err }, "failed to persist request log");
     });
   };

@@ -1,6 +1,7 @@
-import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Hook } from "@hono/zod-openapi";
 import type { Hono, Schema } from "hono";
+
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { requestId } from "hono/request-id";
 import * as HttpStatusCodes from "stoker/http-status-codes";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
