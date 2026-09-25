@@ -23,6 +23,9 @@ const EnvSchema = z.object({
 
 export type env = z.infer<typeof EnvSchema>;
 
+/** Mock handlers only under NODE_ENV=test; dev and prod always call the real Blasta API. */
+export const isMockMode = (): boolean => process.env.NODE_ENV === "test";
+
 // eslint-disable-next-line ts/no-redeclare
 const { data: env, error } = EnvSchema.safeParse(process.env);
 

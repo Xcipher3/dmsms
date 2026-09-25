@@ -7,6 +7,27 @@ import { notFoundSchema } from "@/lib/constants";
 
 const tags = ["Blasta SMS"];
 
+const tokenErrorSchema = z.object({
+  access_token: z.string(),
+  description: z.string(),
+  status_code: z.union([z.string(), z.number()]),
+});
+
+const blastaErrorSchema = z.object({
+  msg_id: z.string(),
+  status_code: z.union([z.string(), z.number()]),
+  description: z.string(),
+});
+
+export type BlastaErrorBody = z.infer<typeof blastaErrorSchema>;
+
+const sendSmsAuthErrorSchema = z.object({
+  status_code: z.number(),
+  description: z.string(),
+});
+
+export type SendSmsAuthErrorBody = z.infer<typeof sendSmsAuthErrorSchema>;
+
 const sendSmsSchema = z.object({
   msg: z.string().min(1),
   numbers: z.string().min(1),
@@ -41,12 +62,24 @@ export const getToken = createRoute({
       "Token generated",
     ),
     [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
-      z.object({
-        access_token: z.string(),
-        description: z.string(),
-        status_code: z.string(),
-      }),
+      tokenErrorSchema,
       "Invalid credentials",
+    ),
+    [HttpStatusCodes.BAD_REQUEST]: jsonContent(
+      tokenErrorSchema,
+      "Blasta gateway error (forwarded as-is)",
+    ),
+    [HttpStatusCodes.FORBIDDEN]: jsonContent(
+      tokenErrorSchema,
+      "Blasta gateway error (forwarded as-is)",
+    ),
+    [HttpStatusCodes.NOT_FOUND]: jsonContent(
+      tokenErrorSchema,
+      "Blasta gateway error (forwarded as-is)",
+    ),
+    [HttpStatusCodes.BAD_GATEWAY]: jsonContent(
+      tokenErrorSchema,
+      "Blasta gateway unreachable",
     ),
     [HttpStatusCodes.INTERNAL_SERVER_ERROR]: jsonContent(
       createErrorSchema(z.object({
@@ -64,6 +97,9 @@ export const sendSms = createRoute({
   method: "post",
   tags,
   request: {
+    headers: z.object({
+      authToken: z.string().optional().describe("access_token from get_token"),
+    }),
     body: jsonContentRequired(
       sendSmsSchema,
       "The SMS to send",
@@ -79,12 +115,16 @@ export const sendSms = createRoute({
       "The sent SMS",
     ),
     [HttpStatusCodes.BAD_REQUEST]: jsonContent(
-      z.object({
-        msg_id: z.string(),
-        status_code: z.string(),
-        description: z.string(),
-      }),
+      blastaErrorSchema,
       "The validation error(s)",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      sendSmsAuthErrorSchema,
+      "Invalid auth token",
+    ),
+    [HttpStatusCodes.BAD_GATEWAY]: jsonContent(
+      blastaErrorSchema,
+      "Blasta gateway unreachable",
     ),
   },
 });
@@ -105,6 +145,9 @@ export const getDlr = createRoute({
   method: "post",
   tags,
   request: {
+    headers: z.object({
+      authToken: z.string().optional().describe("access_token from get_token"),
+    }),
     body: jsonContentRequired(
       dlrSchema,
       "The message ID to check",
@@ -122,16 +165,24 @@ export const getDlr = createRoute({
       "Delivery status",
     ),
     [HttpStatusCodes.BAD_REQUEST]: jsonContent(
-      z.object({
-        msg_id: z.string(),
-        status_code: z.string(),
-        description: z.string(),
-      }),
+      blastaErrorSchema,
       "The validation error(s)",
     ),
     [HttpStatusCodes.NOT_FOUND]: jsonContent(
       notFoundSchema,
       "Message not found",
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: jsonContent(
+      blastaErrorSchema,
+      "Invalid auth token",
+    ),
+    [HttpStatusCodes.FORBIDDEN]: jsonContent(
+      blastaErrorSchema,
+      "Blasta gateway error (forwarded as-is)",
+    ),
+    [HttpStatusCodes.BAD_GATEWAY]: jsonContent(
+      blastaErrorSchema,
+      "Blasta gateway unreachable",
     ),
   },
 });

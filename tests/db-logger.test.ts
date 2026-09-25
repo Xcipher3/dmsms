@@ -44,7 +44,7 @@ describe("db logger", () => {
       dlr_url: "https://example.com/dlr",
       category: "marketing",
     };
-    const res = await smsClient.v3.api.send_sms.$post({ json: payload });
+    const res = await smsClient.v3.api.send_sms.$post({ header: {}, json: payload });
     expect(res.status).toBe(201);
 
     const requestId = res.headers.get("x-request-id")!;
@@ -59,6 +59,30 @@ describe("db logger", () => {
         status_code: expect.any(String),
       }),
     );
+
+    const msgId = (row.responseBody as Record<string, unknown>).msg_id as string;
+    await db.delete(apiRequests).where(eq(apiRequests.id, row.id));
+    await db.delete(smsMessages).where(eq(smsMessages.msgId, msgId));
+  });
+
+  it("redacts the authToken header", { timeout: 60_000 }, async () => {
+    const res = await smsClient.v3.api.send_sms.$post({
+      json: {
+        msg: "header redaction test",
+        numbers: "+256700999999",
+        dlr_url: "https://example.com/dlr",
+        category: "marketing",
+      },
+      header: { authToken: "super-secret-token" },
+    });
+    expect(res.status).toBe(201);
+
+    const requestId = res.headers.get("x-request-id")!;
+    const row = await waitForLogByRequestId(requestId);
+
+    const headers = row.headers as Record<string, string>;
+    expect(headers.authtoken).toBe("[REDACTED]");
+    expect(JSON.stringify(headers)).not.toContain("super-secret-token");
 
     const msgId = (row.responseBody as Record<string, unknown>).msg_id as string;
     await db.delete(apiRequests).where(eq(apiRequests.id, row.id));

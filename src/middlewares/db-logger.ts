@@ -43,7 +43,7 @@ function parseJson(text: string): unknown {
   }
 }
 
-const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "x-api-key"]);
+const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "x-api-key", "authtoken"]);
 
 function safeHeaders(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {};

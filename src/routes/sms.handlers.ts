@@ -2,18 +2,25 @@ import type { Context } from "hono";
 
 import { and, eq } from "drizzle-orm";
 
+import type { BlastaReply } from "@/lib/blasta";
 import type { AppBindings, AppRouteHandler } from "@/lib/types";
 
 import db from "@/db";
-import { authTokens, idempotencyKeys, smsEvents, smsMessages, smsRecipients } from "@/db/schema";
+import { authTokens, eatNow, idempotencyKeys, smsEvents, smsMessages, smsRecipients } from "@/db/schema";
+import { isMockMode } from "@/env";
+import { callBlasta } from "@/lib/blasta";
 import { toEatIso } from "@/lib/eat-time";
 
-import type { DlrStatus, SendOkBody } from "./sms-mock";
-import type { GetDlrRoute, GetTokenRoute, SendSmsRoute } from "./sms.routes";
+import type { DlrBody, DlrStatus, NotFoundBody, SendOkBody, TokenErrorBody, TokenOkBody } from "./sms-mock";
+import type { BlastaErrorBody, GetDlrRoute, GetTokenRoute, SendSmsAuthErrorBody, SendSmsRoute } from "./sms.routes";
 
 import { DLR_DESCRIPTIONS, mockGetDlr, mockGetToken, mockSendSms } from "./sms-mock";
 
 const SEND_SMS_ENDPOINT = "POST /v3/api/send_sms";
+
+function getAuthToken(c: Context<AppBindings>): string | undefined {
+  return c.req.header("authToken") || c.req.header("Authorization")?.replace("Bearer ", "");
+}
 
 async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unknown>): Promise<void> {
   try {
@@ -26,6 +33,51 @@ async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unkn
 
 export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
   const { username, password } = c.req.valid("json");
+
+  if (!isMockMode()) {
+    let gateway: BlastaReply;
+    try {
+      gateway = await callBlasta("/get_token/", { username, password });
+    }
+    catch (error) {
+      c.get("logger").error({ error }, "Blasta gateway unreachable");
+      return c.json({ access_token: "", description: "Blasta gateway unreachable", status_code: "502" }, 502);
+    }
+
+    const accessToken = gateway.body.access_token;
+    if (typeof accessToken === "string" && accessToken.length > 0) {
+      const firstName = typeof gateway.body.first_name === "string" ? gateway.body.first_name : null;
+      const lastName = typeof gateway.body.last_name === "string" ? gateway.body.last_name : null;
+      await bestEffort(c, async () => {
+        await db.insert(authTokens).values({
+          username,
+          accessToken,
+          firstName,
+          lastName,
+        }).onConflictDoUpdate({
+          target: authTokens.username,
+          set: {
+            accessToken,
+            firstName,
+            lastName,
+          },
+        });
+      });
+      return c.json(gateway.body as unknown as TokenOkBody, 201);
+    }
+    if (gateway.status === 400)
+      return c.json(gateway.body as unknown as TokenErrorBody, 400);
+    if (gateway.status === 401)
+      return c.json(gateway.body as unknown as TokenErrorBody, 401);
+    if (gateway.status === 403)
+      return c.json(gateway.body as unknown as TokenErrorBody, 403);
+    if (gateway.status === 404)
+      return c.json(gateway.body as unknown as TokenErrorBody, 404);
+
+    c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
+    return c.json({ access_token: "", description: "Unexpected response from Blasta gateway", status_code: "502" }, 502);
+  }
+
   const reply = mockGetToken(username, password);
 
   if (reply.status === 401) {
@@ -71,7 +123,32 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
     }
   }
 
-  const reply = mockSendSms();
+  let reply: { status: 201; body: SendOkBody };
+  if (isMockMode()) {
+    reply = mockSendSms();
+  }
+  else {
+    let gateway: BlastaReply;
+    try {
+      gateway = await callBlasta("/send_sms/", data, getAuthToken(c));
+    }
+    catch (error) {
+      c.get("logger").error({ error }, "Blasta gateway unreachable");
+      return c.json({ msg_id: "", status_code: "502", description: "Blasta gateway unreachable" }, 502);
+    }
+    if (gateway.status === 400)
+      return c.json(gateway.body as BlastaErrorBody, 400);
+    if (gateway.status === 401)
+      return c.json(gateway.body as SendSmsAuthErrorBody, 401);
+    if (gateway.status === 403)
+      return c.json({ status_code: 401, description: (gateway.body as { description?: string }).description ?? "Invalid auth token" }, 401);
+    if (gateway.status !== 201) {
+      c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
+      return c.json({ msg_id: "", status_code: "502", description: "Unexpected response from Blasta gateway" }, 502);
+    }
+    reply = { status: 201, body: gateway.body as unknown as SendOkBody };
+  }
+
   const messageId = crypto.randomUUID();
 
   const phoneNumbers = [...new Set(
@@ -137,6 +214,42 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
 export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
   const { msgId: camelId, msg_id: snakeId } = c.req.valid("json");
   const msgId = (camelId ?? snakeId)!;
+
+  if (!isMockMode()) {
+    let gateway: BlastaReply;
+    try {
+      gateway = await callBlasta("/dlr/", { msgId }, getAuthToken(c));
+    }
+    catch (error) {
+      c.get("logger").error({ error }, "Blasta gateway unreachable");
+      return c.json({ msg_id: "", status_code: "502", description: "Blasta gateway unreachable" }, 502);
+    }
+
+    if (gateway.status === 200) {
+      const rawStatus = gateway.body.status;
+      const status: DlrStatus | undefined
+        = rawStatus === "delivered" || rawStatus === "failed" || rawStatus === "pending" ? rawStatus : undefined;
+      if (status) {
+        await bestEffort(c, async () => {
+          await db.update(smsMessages)
+            .set({ status, updatedAt: eatNow() })
+            .where(eq(smsMessages.msgId, msgId));
+        });
+      }
+      return c.json(gateway.body as unknown as DlrBody, 200);
+    }
+    if (gateway.status === 400)
+      return c.json(gateway.body as BlastaErrorBody, 400);
+    if (gateway.status === 401)
+      return c.json(gateway.body as BlastaErrorBody, 401);
+    if (gateway.status === 403)
+      return c.json(gateway.body as BlastaErrorBody, 403);
+    if (gateway.status === 404)
+      return c.json(gateway.body as unknown as NotFoundBody, 404);
+
+    c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
+    return c.json({ msg_id: "", status_code: "502", description: "Unexpected response from Blasta gateway" }, 502);
+  }
 
   let dbRow: typeof smsMessages.$inferSelect | undefined;
   try {

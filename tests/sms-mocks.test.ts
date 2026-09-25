@@ -38,7 +38,7 @@ describe("blasta SMS mock responses", () => {
   });
 
   it("returns the sendSms mock payload", async () => {
-    const response = await client.v3.api.send_sms.$post({ json: SEND });
+    const response = await client.v3.api.send_sms.$post({ header: {}, json: SEND });
 
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
@@ -50,6 +50,7 @@ describe("blasta SMS mock responses", () => {
 
   it("returns 400 with the sendSms failure shape on invalid body", async () => {
     const response = await client.v3.api.send_sms.$post({
+      header: {},
       json: {
         msg: "",
         numbers: "",
@@ -67,10 +68,10 @@ describe("blasta SMS mock responses", () => {
   });
 
   it("returns the getDlr mock payload across the message lifecycle", async () => {
-    const send = await client.v3.api.send_sms.$post({ json: SEND });
+    const send = await client.v3.api.send_sms.$post({ header: {}, json: SEND });
     const { msg_id } = await send.json() as unknown as { msg_id: string };
 
-    const pending = await client.v3.api.dlr.$post({ json: { msgId: msg_id } });
+    const pending = await client.v3.api.dlr.$post({ header: {}, json: { msgId: msg_id } });
     expect(pending.status).toBe(200);
     expect(await pending.json()).toMatchObject({
       msg_id,
@@ -81,7 +82,7 @@ describe("blasta SMS mock responses", () => {
 
     await mockSetDlrStatus(msg_id, "delivered");
 
-    const delivered = await client.v3.api.dlr.$post({ json: { msgId: msg_id } });
+    const delivered = await client.v3.api.dlr.$post({ header: {}, json: { msgId: msg_id } });
     expect(delivered.status).toBe(200);
     expect(await delivered.json()).toMatchObject({
       msg_id,
@@ -92,17 +93,17 @@ describe("blasta SMS mock responses", () => {
   });
 
   it("returns 404 for a msgId that was never sent", async () => {
-    const response = await client.v3.api.dlr.$post({ json: { msgId: "mock-msg-999" } });
+    const response = await client.v3.api.dlr.$post({ header: {}, json: { msgId: "mock-msg-999" } });
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ message: "Not Found" });
   });
 
   it("returns submitted_at in east african time", async () => {
-    const send = await client.v3.api.send_sms.$post({ json: SEND });
+    const send = await client.v3.api.send_sms.$post({ header: {}, json: SEND });
     const { msg_id } = await send.json() as unknown as { msg_id: string };
 
-    const dlr = await client.v3.api.dlr.$post({ json: { msgId: msg_id } });
+    const dlr = await client.v3.api.dlr.$post({ header: {}, json: { msgId: msg_id } });
     const body = await dlr.json() as unknown as { submitted_at: string };
     expect(body.submitted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/);
   });

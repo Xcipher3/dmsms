@@ -137,7 +137,7 @@ Interactive API documentation is available at `GET /docs` (or `GET /reference`) 
 | `POST` | `/v3/api/send_sms/`  | Send an SMS via Blasta, record it locally | `sms_messages` |
 | `POST` | `/v3/api/dlr/`       | Check delivery status of a message        | no             |
 
-Request bodies for `POST` routes are validated with zod. `POST /v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure.
+Request bodies for `POST` routes are validated with zod. Outside tests, the handlers proxy to the real Blasta gateway (`BLASTA_BASE_URL`): `get_token` returns Blasta's real `access_token`, and `send_sms`/`dlr` must be called with that token in an `authToken` header (or `Authorization: Bearer <token>`). Blasta's `400`/`401` responses are forwarded as-is; if the gateway is unreachable the API returns `502` with `status_code: "502"`. Under `NODE_ENV=test` the handlers answer from local mock state instead, so the test suite never hits the live API. `POST /v3/api/send_sms/` returns `400` with `{ msg_id, status_code: "400", description }` on validation failure.
 
 > [!NOTE]
 > **Windows PowerShell:** the `sh` blocks below use bash syntax — `\` line continuations are invalid in PowerShell, and `curl` is an alias for `Invoke-WebRequest`, which doesn't accept `-X`/`-H`/`-d`. Run the `powershell` blocks instead (they pipe the JSON body into `curl.exe`), or use Git Bash/WSL.
@@ -165,6 +165,7 @@ curl -X POST http://localhost:9999/v3/api/get_token/ \
 ```sh
 curl -X POST http://localhost:9999/v3/api/send_sms/ \
   -H "Content-Type: application/json" \
+  -H "authToken: <access_token from get_token>" \
   -d '{
     "msg": "Hello from Blasta!",
     "numbers": "+256770123456",
@@ -179,7 +180,7 @@ curl -X POST http://localhost:9999/v3/api/send_sms/ \
     "numbers": "+256770123456",
     "dlr_url": "https://example.com/dlr",
     "category": "Marketing"
-}' | curl.exe -X POST http://localhost:9999/v3/api/send_sms/ -H "Content-Type: application/json" -d "@-"
+}' | curl.exe -X POST http://localhost:9999/v3/api/send_sms/ -H "Content-Type: application/json" -H "authToken: <access_token from get_token>" -d "@-"
 ```
 
 ### Example: check a delivery report
@@ -187,17 +188,18 @@ curl -X POST http://localhost:9999/v3/api/send_sms/ \
 ```sh
 curl -X POST http://localhost:9999/v3/api/dlr/ \
   -H "Content-Type: application/json" \
+  -H "authToken: <access_token from get_token>" \
   -d '{
-    "msgId": "mock-msg-001"
+    "msgId": "message-id-from-send_sms"
   }'
 ```
 
 ```powershell
 '{
-    "msgId": "mock-msg-001"
-}' | curl.exe -X POST http://localhost:9999/v3/api/dlr/ -H "Content-Type: application/json" -d "@-"
+    "msgId": "message-id-from-send_sms"
+}' | curl.exe -X POST http://localhost:9999/v3/api/dlr/ -H "Content-Type: application/json" -H "authToken: <access_token from get_token>" -d "@-"
 ```
 
 ## Logging
 
-Logging is handled by `hono-pino` (`src/middlewares/pino-logger.ts`); the level is set by `LOG_LEVEL` (`silent` disables it). Every request is also persisted to the `api_requests` table by `src/middlewares/db-logger.ts` (fail-silent: a DB error never affects the API response).
+Logging is handled by `hono-pino` (`src/middlewares/pino-logger.ts`); the level is set by `LOG_LEVEL` (`silent` disables it). Every request is also persisted to the `api_requests` table by `src/middlewares/db-logger.ts` (fail-silent: a DB error never affects the API response). The `authorization`, `authtoken`, `cookie`, `set-cookie`, and `x-api-key` headers are stored as `[REDACTED]`.

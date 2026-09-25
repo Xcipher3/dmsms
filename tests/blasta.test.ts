@@ -54,7 +54,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
 
   describe("send SMS", () => {
     it("should return success response with mock data", async () => {
-      const response = await client.v3.api.send_sms.$post({ json: SEND });
+      const response = await client.v3.api.send_sms.$post({ header: {}, json: SEND });
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -65,6 +65,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
 
     it("should handle validation errors", async () => {
       const response = await client.v3.api.send_sms.$post({
+        header: {},
         json: {
           msg: "",
           numbers: "",
@@ -81,22 +82,23 @@ describe("blasta SMS API - End-to-End Tests", () => {
 
   describe("check DLR", () => {
     it("should return delivery status for an existing message", async () => {
-      const sendRes = await client.v3.api.send_sms.$post({ json: SEND });
+      const sendRes = await client.v3.api.send_sms.$post({ header: {}, json: SEND });
       const { msg_id } = await sendRes.json() as unknown as { msg_id: string };
 
-      const pending = await client.v3.api.dlr.$post({ json: { msgId: msg_id } });
+      const pending = await client.v3.api.dlr.$post({ header: {}, json: { msgId: msg_id } });
       expect(pending.status).toBe(200);
       expect(await pending.json()).toHaveProperty("status", "pending");
 
       await mockSetDlrStatus(msg_id, "delivered");
 
-      const delivered = await client.v3.api.dlr.$post({ json: { msgId: msg_id } });
+      const delivered = await client.v3.api.dlr.$post({ header: {}, json: { msgId: msg_id } });
       expect(delivered.status).toBe(200);
       expect(await delivered.json()).toHaveProperty("status", "delivered");
     });
 
     it("should return 404 for nonexistent message", async () => {
       const response = await client.v3.api.dlr.$post({
+        header: {},
         json: { msgId: "nonexistent-msg" },
       });
 
@@ -104,7 +106,7 @@ describe("blasta SMS API - End-to-End Tests", () => {
     });
 
     it("should return a Blasta-format error when no msgId or msg_id is provided", async () => {
-      const response = await client.v3.api.dlr.$post({ json: {} });
+      const response = await client.v3.api.dlr.$post({ header: {}, json: {} });
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
@@ -115,10 +117,10 @@ describe("blasta SMS API - End-to-End Tests", () => {
     });
 
     it("should accept the snake_case msg_id field", async () => {
-      const sendRes = await client.v3.api.send_sms.$post({ json: SEND });
+      const sendRes = await client.v3.api.send_sms.$post({ header: {}, json: SEND });
       const { msg_id } = await sendRes.json() as unknown as { msg_id: string };
 
-      const delivered = await client.v3.api.dlr.$post({ json: { msg_id } });
+      const delivered = await client.v3.api.dlr.$post({ header: {}, json: { msg_id } });
       expect(delivered.status).toBe(200);
       expect((await delivered.json() as unknown as { status: string }).status).toBe("pending");
     });
