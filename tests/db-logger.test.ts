@@ -65,7 +65,7 @@ describe("db logger", () => {
     await db.delete(smsMessages).where(eq(smsMessages.msgId, msgId));
   });
 
-  it("redacts the authToken header", { timeout: 60_000 }, async () => {
+  it("redacts the Authorization header", { timeout: 60_000 }, async () => {
     const res = await smsClient.v3.api.send_sms.$post({
       json: {
         msg: "header redaction test",
@@ -73,7 +73,7 @@ describe("db logger", () => {
         dlr_url: "https://example.com/dlr",
         category: "marketing",
       },
-      header: { authToken: "super-secret-token" },
+      header: { Authorization: "Bearer super-secret-token" },
     });
     expect(res.status).toBe(201);
 
@@ -81,7 +81,7 @@ describe("db logger", () => {
     const row = await waitForLogByRequestId(requestId);
 
     const headers = row.headers as Record<string, string>;
-    expect(headers.authtoken).toBe("[REDACTED]");
+    expect(headers.authorization).toBe("[REDACTED]");
     expect(JSON.stringify(headers)).not.toContain("super-secret-token");
 
     const msgId = (row.responseBody as Record<string, unknown>).msg_id as string;

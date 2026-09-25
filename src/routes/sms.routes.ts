@@ -98,7 +98,7 @@ export const sendSms = createRoute({
   tags,
   request: {
     headers: z.object({
-      authToken: z.string().optional().describe("access_token from get_token"),
+      Authorization: z.string().optional().describe("Bearer access_token from get_token"),
     }),
     body: jsonContentRequired(
       sendSmsSchema,
@@ -146,7 +146,7 @@ export const getDlr = createRoute({
   tags,
   request: {
     headers: z.object({
-      authToken: z.string().optional().describe("access_token from get_token"),
+      Authorization: z.string().optional().describe("Bearer access_token from get_token"),
     }),
     body: jsonContentRequired(
       dlrSchema,

@@ -1,8 +1,8 @@
+import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 
-import { and, eq } from "drizzle-orm";
-
 import type { BlastaReply } from "@/lib/blasta";
+import { hashToken } from "@/lib/hash";
 import type { AppBindings, AppRouteHandler } from "@/lib/types";
 
 import db from "@/db";
@@ -18,10 +18,6 @@ import { DLR_DESCRIPTIONS, mockGetDlr, mockGetToken, mockSendSms } from "./sms-m
 
 const SEND_SMS_ENDPOINT = "POST /v3/api/send_sms";
 
-function getAuthToken(c: Context<AppBindings>): string | undefined {
-  return c.req.header("authToken") || c.req.header("Authorization")?.replace("Bearer ", "");
-}
-
 async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unknown>): Promise<void> {
   try {
     await operation();
@@ -29,6 +25,18 @@ async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unkn
   catch (error) {
     c.get("logger").error({ error }, "DB unavailable - request satisfied from mock state");
   }
+}
+
+async function validateToken(c: Context<AppBindings>): Promise<Response | undefined> {
+  if (isMockMode()) return undefined;
+  const token = c.get("authToken");
+  if (!token) return undefined;
+  const hashedToken = hashToken(token);
+  const rows = await db.select().from(authTokens).where(eq(authTokens.accessToken, hashedToken)).limit(1);
+  if (!rows[0]) {
+    return c.json({ status_code: 401, description: "Invalid auth token" }, 401);
+  }
+  return undefined;
 }
 
 export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
@@ -48,31 +56,32 @@ export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
     if (typeof accessToken === "string" && accessToken.length > 0) {
       const firstName = typeof gateway.body.first_name === "string" ? gateway.body.first_name : null;
       const lastName = typeof gateway.body.last_name === "string" ? gateway.body.last_name : null;
+      const hashedToken = hashToken(accessToken);
       await bestEffort(c, async () => {
         await db.insert(authTokens).values({
           username,
-          accessToken,
+          accessToken: hashedToken,
           firstName,
           lastName,
         }).onConflictDoUpdate({
           target: authTokens.username,
           set: {
-            accessToken,
+            accessToken: hashedToken,
             firstName,
             lastName,
           },
         });
       });
-      return c.json(gateway.body as unknown as TokenOkBody, 201);
+      return c.json(gateway.body as TokenOkBody, 201);
     }
     if (gateway.status === 400)
-      return c.json(gateway.body as unknown as TokenErrorBody, 400);
+      return c.json(gateway.body as TokenErrorBody, 400);
     if (gateway.status === 401)
-      return c.json(gateway.body as unknown as TokenErrorBody, 401);
+      return c.json(gateway.body as TokenErrorBody, 401);
     if (gateway.status === 403)
-      return c.json(gateway.body as unknown as TokenErrorBody, 403);
+      return c.json(gateway.body as TokenErrorBody, 403);
     if (gateway.status === 404)
-      return c.json(gateway.body as unknown as TokenErrorBody, 404);
+      return c.json(gateway.body as TokenErrorBody, 404);
 
     c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
     return c.json({ access_token: "", description: "Unexpected response from Blasta gateway", status_code: "502" }, 502);
@@ -85,15 +94,16 @@ export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
   }
 
   await bestEffort(c, async () => {
+    const hashedToken = hashToken(reply.body.access_token);
     await db.insert(authTokens).values({
       username,
-      accessToken: reply.body.access_token,
+      accessToken: hashedToken,
       firstName: reply.body.first_name,
       lastName: reply.body.last_name,
     }).onConflictDoUpdate({
       target: authTokens.username,
       set: {
-        accessToken: reply.body.access_token,
+        accessToken: hashedToken,
         firstName: reply.body.first_name,
         lastName: reply.body.last_name,
       },
@@ -123,14 +133,17 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
     }
   }
 
-  let reply: { status: 201; body: SendOkBody };
+  const authError = await validateToken(c);
+  if (authError) return authError;
+
+  let reply: { status: number; body: SendOkBody };
   if (isMockMode()) {
-    reply = mockSendSms();
+    reply = { status: 201, body: mockSendSms().body };
   }
   else {
     let gateway: BlastaReply;
     try {
-      gateway = await callBlasta("/send_sms/", data, getAuthToken(c));
+      gateway = await callBlasta("/send_sms/", data, c.get("authToken"));
     }
     catch (error) {
       c.get("logger").error({ error }, "Blasta gateway unreachable");
@@ -146,7 +159,7 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
       c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
       return c.json({ msg_id: "", status_code: "502", description: "Unexpected response from Blasta gateway" }, 502);
     }
-    reply = { status: 201, body: gateway.body as unknown as SendOkBody };
+    reply = { status: 201, body: gateway.body as SendOkBody };
   }
 
   const messageId = crypto.randomUUID();
@@ -216,9 +229,12 @@ export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
   const msgId = (camelId ?? snakeId)!;
 
   if (!isMockMode()) {
+    const authError = await validateToken(c);
+    if (authError) return authError;
+
     let gateway: BlastaReply;
     try {
-      gateway = await callBlasta("/dlr/", { msgId }, getAuthToken(c));
+      gateway = await callBlasta("/dlr/", { msgId }, c.get("authToken"));
     }
     catch (error) {
       c.get("logger").error({ error }, "Blasta gateway unreachable");
@@ -236,7 +252,7 @@ export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
             .where(eq(smsMessages.msgId, msgId));
         });
       }
-      return c.json(gateway.body as unknown as DlrBody, 200);
+      return c.json(gateway.body as DlrBody, 200);
     }
     if (gateway.status === 400)
       return c.json(gateway.body as BlastaErrorBody, 400);
@@ -245,7 +261,7 @@ export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
     if (gateway.status === 403)
       return c.json(gateway.body as BlastaErrorBody, 403);
     if (gateway.status === 404)
-      return c.json(gateway.body as unknown as NotFoundBody, 404);
+      return c.json(gateway.body as NotFoundBody, 404);
 
     c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
     return c.json({ msg_id: "", status_code: "502", description: "Unexpected response from Blasta gateway" }, 502);

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { testClient } from "hono/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { hashToken } from "@/lib/hash";
 import db from "@/db";
 import { authTokens, smsMessages } from "@/db/schema";
 import env from "@/env";
@@ -32,10 +33,49 @@ let blastaReply: BlastaReply;
 let blastaUnreachable = false;
 let captured: CapturedCall[] = [];
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubEnv("NODE_ENV", "development");
   blastaUnreachable = false;
   captured = [];
+  await db.insert(authTokens).values({
+    username: "test-user",
+    accessToken: hashToken("token-abc"),
+    firstName: "Test",
+    lastName: "User",
+  }).onConflictDoUpdate({
+    target: authTokens.username,
+    set: {
+      accessToken: hashToken("token-abc"),
+      firstName: "Test",
+      lastName: "User",
+    },
+  });
+  await db.insert(authTokens).values({
+    username: "test-user-bad",
+    accessToken: hashToken("bad-token"),
+    firstName: "Test",
+    lastName: "User",
+  }).onConflictDoUpdate({
+    target: authTokens.username,
+    set: {
+      accessToken: hashToken("bad-token"),
+      firstName: "Test",
+      lastName: "User",
+    },
+  });
+  await db.insert(authTokens).values({
+    username: "test-user-stale",
+    accessToken: hashToken("stale-token"),
+    firstName: "Test",
+    lastName: "User",
+  }).onConflictDoUpdate({
+    target: authTokens.username,
+    set: {
+      accessToken: hashToken("stale-token"),
+      firstName: "Test",
+      lastName: "User",
+    },
+  });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (!url.startsWith(env.BLASTA_BASE_URL))
@@ -50,7 +90,10 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await db.delete(authTokens).where(eq(authTokens.username, "test-user"));
+  await db.delete(authTokens).where(eq(authTokens.username, "test-user-bad"));
+  await db.delete(authTokens).where(eq(authTokens.username, "test-user-stale"));
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -91,7 +134,7 @@ describe("real Blasta mode", () => {
 
       const rows = await db.select().from(authTokens).where(eq(authTokens.username, "enoc"));
       expect(rows).toHaveLength(1);
-      expect(rows[0].accessToken).toBe("REALtoken123");
+      expect(rows[0].accessToken).toBe(hashToken("REALtoken123"));
       await db.delete(authTokens).where(eq(authTokens.username, "enoc"));
     });
 
@@ -129,7 +172,7 @@ describe("real Blasta mode", () => {
   });
 
   describe("send_sms", () => {
-    it("forwards the authToken header and payload, and records the real msg_id", async () => {
+    it("forwards the Authorization header and payload, and records the real msg_id", async () => {
       blastaReply = {
         status: 201,
         body: { msg_id: "REAL-MSG-001", status_code: "201", description: "Message accepted" },
@@ -137,7 +180,7 @@ describe("real Blasta mode", () => {
 
       const response = await client.v3.api.send_sms.$post({
         json: SEND,
-        header: { authToken: "token-abc" },
+        header: { Authorization: "Bearer token-abc" },
       });
 
       expect(response.status).toBe(201);
@@ -160,7 +203,7 @@ describe("real Blasta mode", () => {
 
       const response = await client.v3.api.send_sms.$post({
         json: SEND,
-        header: { authToken: "bad-token" },
+        header: { Authorization: "Bearer bad-token" },
       });
 
       expect(response.status).toBe(401);
@@ -180,7 +223,7 @@ describe("real Blasta mode", () => {
 
       const response = await client.v3.api.send_sms.$post({
         json: SEND,
-        header: { authToken: "stale-token" },
+        header: { Authorization: "Bearer stale-token" },
       });
 
       expect(response.status).toBe(401);
@@ -193,7 +236,7 @@ describe("real Blasta mode", () => {
 
       const response = await client.v3.api.send_sms.$post({
         json: SEND,
-        header: { authToken: "token-abc" },
+        header: { Authorization: "Bearer token-abc" },
       });
 
       expect(response.status).toBe(502);
@@ -221,7 +264,7 @@ describe("real Blasta mode", () => {
 
       const response = await client.v3.api.dlr.$post({
         json: { msgId: "REAL-MSG-001" },
-        header: { authToken: "token-abc" },
+        header: { Authorization: "Bearer token-abc" },
       });
 
       expect(response.status).toBe(200);
@@ -244,7 +287,7 @@ describe("real Blasta mode", () => {
 
       const response = await client.v3.api.dlr.$post({
         json: { msgId: "REAL-MSG-001" },
-        header: { authToken: "stale-token" },
+        header: { Authorization: "Bearer stale-token" },
       });
 
       expect(response.status).toBe(403);
@@ -259,7 +302,7 @@ describe("real Blasta mode", () => {
       };
       const sendRes = await client.v3.api.send_sms.$post({
         json: SEND,
-        header: { authToken: "token-abc" },
+        header: { Authorization: "Bearer token-abc" },
       });
       expect(sendRes.status).toBe(201);
 
@@ -275,7 +318,7 @@ describe("real Blasta mode", () => {
       };
       const dlrRes = await client.v3.api.dlr.$post({
         json: { msgId: "REAL-MSG-002" },
-        header: { authToken: "token-abc" },
+        header: { Authorization: "Bearer token-abc" },
       });
       expect(dlrRes.status).toBe(200);
 
