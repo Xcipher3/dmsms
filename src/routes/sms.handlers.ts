@@ -1,8 +1,8 @@
-import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 
+import { and, eq } from "drizzle-orm";
+
 import type { BlastaReply } from "@/lib/blasta";
-import { hashToken } from "@/lib/hash";
 import type { AppBindings, AppRouteHandler } from "@/lib/types";
 
 import db from "@/db";
@@ -10,6 +10,7 @@ import { authTokens, eatNow, idempotencyKeys, smsEvents, smsMessages, smsRecipie
 import { isMockMode } from "@/env";
 import { callBlasta } from "@/lib/blasta";
 import { toEatIso } from "@/lib/eat-time";
+import { hashToken } from "@/lib/hash";
 
 import type { DlrBody, DlrStatus, NotFoundBody, SendOkBody, TokenErrorBody, TokenOkBody } from "./sms-mock";
 import type { BlastaErrorBody, GetDlrRoute, GetTokenRoute, SendSmsAuthErrorBody, SendSmsRoute } from "./sms.routes";
@@ -17,6 +18,21 @@ import type { BlastaErrorBody, GetDlrRoute, GetTokenRoute, SendSmsAuthErrorBody,
 import { DLR_DESCRIPTIONS, mockGetDlr, mockGetToken, mockSendSms } from "./sms-mock";
 
 const SEND_SMS_ENDPOINT = "POST /v3/api/send_sms";
+
+interface RequestBodyReader {
+  req: {
+    header: (name: string) => string | undefined;
+    valid: (target: "json" | "form") => unknown;
+  };
+}
+
+function getRequestBody<T>(c: RequestBodyReader): T {
+  const contentType = c.req.header("content-type")?.toLowerCase() ?? "";
+  const target = contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")
+    ? "form"
+    : "json";
+  return c.req.valid(target) as T;
+}
 
 async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unknown>): Promise<void> {
   try {
@@ -27,20 +43,19 @@ async function bestEffort(c: Context<AppBindings>, operation: () => Promise<unkn
   }
 }
 
-async function validateToken(c: Context<AppBindings>): Promise<Response | undefined> {
-  if (isMockMode()) return undefined;
+async function isValidToken(c: Context<AppBindings>): Promise<boolean> {
+  if (isMockMode())
+    return true;
   const token = c.get("authToken");
-  if (!token) return undefined;
+  if (!token)
+    return false;
   const hashedToken = hashToken(token);
   const rows = await db.select().from(authTokens).where(eq(authTokens.accessToken, hashedToken)).limit(1);
-  if (!rows[0]) {
-    return c.json({ status_code: 401, description: "Invalid auth token" }, 401);
-  }
-  return undefined;
+  return rows.length > 0;
 }
 
 export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
-  const { username, password } = c.req.valid("json");
+  const { username, password } = getRequestBody<{ username: string; password: string }>(c);
 
   if (!isMockMode()) {
     let gateway: BlastaReply;
@@ -72,16 +87,14 @@ export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
           },
         });
       });
-      return c.json(gateway.body as TokenOkBody, 201);
+      return c.json(gateway.body as unknown as TokenOkBody, 201);
     }
     if (gateway.status === 400)
-      return c.json(gateway.body as TokenErrorBody, 400);
+      return c.json(gateway.body as unknown as TokenErrorBody, 400);
     if (gateway.status === 401)
-      return c.json(gateway.body as TokenErrorBody, 401);
-    if (gateway.status === 403)
-      return c.json(gateway.body as TokenErrorBody, 403);
-    if (gateway.status === 404)
-      return c.json(gateway.body as TokenErrorBody, 404);
+      return c.json(gateway.body as unknown as TokenErrorBody, 401);
+    if (gateway.status === 403 || gateway.status === 404)
+      return c.json(gateway.body as unknown as TokenErrorBody, gateway.status === 403 ? 400 : 404);
 
     c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
     return c.json({ access_token: "", description: "Unexpected response from Blasta gateway", status_code: "502" }, 502);
@@ -114,7 +127,12 @@ export const getToken: AppRouteHandler<GetTokenRoute> = async (c) => {
 };
 
 export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
-  const data = c.req.valid("json");
+  const data = getRequestBody<{
+    msg: string;
+    numbers: string;
+    dlr_url: string;
+    category: string;
+  }>(c);
   const idempotencyKey = c.req.header("idempotency-key");
 
   if (idempotencyKey) {
@@ -125,7 +143,7 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
       )).limit(1);
       const hit = rows[0];
       if (hit && (!hit.expiresAt || hit.expiresAt.getTime() > Date.now())) {
-        return c.json(hit.responseBody as SendOkBody, hit.statusCode as 201);
+        return c.json(hit.responseBody as unknown as SendOkBody, hit.statusCode as 201);
       }
     }
     catch (error) {
@@ -133,8 +151,19 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
     }
   }
 
-  const authError = await validateToken(c);
-  if (authError) return authError;
+  if (!await isValidToken(c))
+    return c.json({ status_code: 401, description: "Invalid auth token" }, 401);
+
+  const phoneNumbers = [...new Set(
+    data.numbers
+      .split(",")
+      .map(n => n.trim())
+      .filter(Boolean),
+  )];
+
+  if (phoneNumbers.length === 0) {
+    return c.json({ msg_id: "", status_code: "400", description: "No valid phone numbers provided" }, 400);
+  }
 
   let reply: { status: number; body: SendOkBody };
   if (isMockMode()) {
@@ -150,26 +179,19 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
       return c.json({ msg_id: "", status_code: "502", description: "Blasta gateway unreachable" }, 502);
     }
     if (gateway.status === 400)
-      return c.json(gateway.body as BlastaErrorBody, 400);
+      return c.json(gateway.body as unknown as BlastaErrorBody, 400);
     if (gateway.status === 401)
-      return c.json(gateway.body as SendSmsAuthErrorBody, 401);
+      return c.json(gateway.body as unknown as SendSmsAuthErrorBody, 401);
     if (gateway.status === 403)
-      return c.json({ status_code: 401, description: (gateway.body as { description?: string }).description ?? "Invalid auth token" }, 401);
+      return c.json({ status_code: 401, description: (gateway.body as unknown as { description?: string }).description ?? "Invalid auth token" }, 401);
     if (gateway.status !== 201) {
       c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
       return c.json({ msg_id: "", status_code: "502", description: "Unexpected response from Blasta gateway" }, 502);
     }
-    reply = { status: 201, body: gateway.body as SendOkBody };
+    reply = { status: 201, body: gateway.body as unknown as SendOkBody };
   }
 
   const messageId = crypto.randomUUID();
-
-  const phoneNumbers = [...new Set(
-    data.numbers
-      .split(",")
-      .map(n => n.trim())
-      .filter(Boolean),
-  )];
 
   const recipientRows = phoneNumbers.map(phone => ({
     id: crypto.randomUUID(),
@@ -225,12 +247,15 @@ export const sendSms: AppRouteHandler<SendSmsRoute> = async (c) => {
 };
 
 export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
-  const { msgId: camelId, msg_id: snakeId } = c.req.valid("json");
+  const { msgId: camelId, msg_id: snakeId } = getRequestBody<{
+    msgId?: string;
+    msg_id?: string;
+  }>(c);
   const msgId = (camelId ?? snakeId)!;
 
   if (!isMockMode()) {
-    const authError = await validateToken(c);
-    if (authError) return authError;
+    if (!await isValidToken(c))
+      return c.json({ status_code: 401, description: "Invalid auth token" }, 401);
 
     let gateway: BlastaReply;
     try {
@@ -252,16 +277,16 @@ export const getDlr: AppRouteHandler<GetDlrRoute> = async (c) => {
             .where(eq(smsMessages.msgId, msgId));
         });
       }
-      return c.json(gateway.body as DlrBody, 200);
+      return c.json(gateway.body as unknown as DlrBody, 200);
     }
     if (gateway.status === 400)
-      return c.json(gateway.body as BlastaErrorBody, 400);
+      return c.json(gateway.body as unknown as BlastaErrorBody, 400);
     if (gateway.status === 401)
-      return c.json(gateway.body as BlastaErrorBody, 401);
+      return c.json(gateway.body as unknown as BlastaErrorBody, 401);
     if (gateway.status === 403)
-      return c.json(gateway.body as BlastaErrorBody, 403);
+      return c.json(gateway.body as unknown as BlastaErrorBody, 403);
     if (gateway.status === 404)
-      return c.json(gateway.body as NotFoundBody, 404);
+      return c.json(gateway.body as unknown as NotFoundBody, 404);
 
     c.get("logger").error({ status: gateway.status }, "unexpected Blasta gateway response");
     return c.json({ msg_id: "", status_code: "502", description: "Unexpected response from Blasta gateway" }, 502);

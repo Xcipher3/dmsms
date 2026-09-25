@@ -8,8 +8,8 @@ import { createTestApp } from "@/lib/create-app";
 import index from "@/routes/index.route";
 import router from "@/routes/sms.index";
 
-const client = testClient(createTestApp(index));
-const smsClient = testClient(createTestApp(router));
+const client = testClient(createTestApp(index)) as any;
+const smsClient = testClient(createTestApp(router)) as any;
 
 async function waitForLogByRequestId(requestId: string, timeoutMs = 10_000) {
   const start = Date.now();

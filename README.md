@@ -29,7 +29,7 @@ The API issues auth tokens (`/get_token/`), sends SMS and checks delivery report
 | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | API framework        | [Hono](https://hono.dev/) + [@hono/node-server](https://hono.dev/docs/getting-started/nodejs)                       |
 | OpenAPI / validation | [@hono/zod-openapi](https://github.com/honojs/middleware/tree/main/packages/zod-openapi) + [zod](https://zod.dev/)  |
-| Docs UI              | [Scalar](https://scalar.com/#api-docs) / [@scalar/hono-api-reference](https://github.com/scalar/hono-api-reference) |    |
+| Docs UI              | [Scalar](https://scalar.com/#api-docs) / [@scalar/hono-api-reference](https://github.com/scalar/hono-api-reference) |
 | Database             | [Drizzle ORM](https://orm.drizzle.team/docs/overview) + [Neon serverless](https://neon.tech/) (Postgres)            |
 | Logging              | [pino](https://getpino.io/) / [hono-pino](https://www.npmjs.com/package/hono-pino)                                  |
 | Testing              | [vitest](https://vitest.dev/)                                                                                       |
@@ -122,7 +122,6 @@ Build and run for production:
 pnpm build
 pnpm start
 ```
-
 
 Interactive API documentation is available at `GET /docs` (or `GET /reference`) with Scalar, and the raw OpenAPI spec at `GET /doc`. Operations appear in registration order: `get_token`, then `send_sms`, then `dlr`.
 

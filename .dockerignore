@@ -1,0 +1,16 @@
+node_modules
+dist
+logs
+*.test.ts
+*.test.js
+tests
+.vscode
+.idea
+.git
+.env.example
+.dockerignore
+Dockerfile
+*.md
+.env.test
+*.sql
+drizzle.config.ts

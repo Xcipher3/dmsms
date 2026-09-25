@@ -6,7 +6,7 @@ import { createTestApp } from "@/lib/create-app";
 import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 import router from "@/routes/sms.index";
 
-const client = testClient(createTestApp(router));
+const client = testClient(createTestApp(router)) as any;
 
 beforeEach(() => {
   resetMockState();

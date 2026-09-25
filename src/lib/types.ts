@@ -6,6 +6,7 @@ export interface AppBindings {
   Variables: {
     logger: PinoLogger;
     requestId: string;
+    authToken: string;
   };
 };
 

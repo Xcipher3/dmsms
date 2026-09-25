@@ -1,12 +1,14 @@
 import { testClient } from "hono/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import configuredApp from "@/app";
 import env from "@/env";
 import { createTestApp } from "@/lib/create-app";
 import { mockSetDlrStatus, resetMockState } from "@/routes/sms-mock";
 import router from "@/routes/sms.index";
 
-const client = testClient(createTestApp(router));
+const app = createTestApp(router);
+const client = testClient(app) as any;
 
 beforeEach(() => {
   resetMockState();
@@ -106,5 +108,66 @@ describe("blasta SMS mock responses", () => {
     const dlr = await client.v3.api.dlr.$post({ header: {}, json: { msgId: msg_id } });
     const body = await dlr.json() as unknown as { submitted_at: string };
     expect(body.submitted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/);
+  });
+
+  it("accepts urlencoded token credentials", async () => {
+    const response = await app.request("/v3/api/get_token/", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        username: env.BLASTA_USERNAME,
+        password: env.BLASTA_PASSWORD,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("accepts multipart token credentials", async () => {
+    const body = new FormData();
+    body.set("username", env.BLASTA_USERNAME);
+    body.set("password", env.BLASTA_PASSWORD);
+
+    const response = await app.request("/v3/api/get_token/", {
+      method: "POST",
+      body,
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("publishes the three request media types and required bodies", async () => {
+    const response = await configuredApp.request("/doc");
+    expect(response.status).toBe(200);
+
+    const document = await response.json() as {
+      paths: Record<string, {
+        post?: {
+          requestBody?: {
+            required?: boolean;
+            content: Record<string, unknown>;
+          };
+          parameters?: Array<{
+            name?: string;
+            required?: boolean;
+          }>;
+        };
+      }>;
+    };
+
+    for (const path of ["/v3/api/get_token/", "/v3/api/send_sms/", "/v3/api/dlr/"]) {
+      const requestBody = document.paths[path]?.post?.requestBody;
+      expect(requestBody?.required).toBe(true);
+      expect(Object.keys(requestBody?.content ?? {})).toEqual(expect.arrayContaining([
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+      ]));
+    }
+
+    for (const path of ["/v3/api/send_sms/", "/v3/api/dlr/"]) {
+      const authParameter = document.paths[path]?.post?.parameters?.find(parameter => parameter.name === "authToken");
+      expect(authParameter?.required).toBe(true);
+    }
   });
 });

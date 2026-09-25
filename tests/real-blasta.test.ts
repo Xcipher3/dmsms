@@ -2,14 +2,14 @@ import { eq } from "drizzle-orm";
 import { testClient } from "hono/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hashToken } from "@/lib/hash";
 import db from "@/db";
 import { authTokens, smsMessages } from "@/db/schema";
 import env from "@/env";
 import { createTestApp } from "@/lib/create-app";
+import { hashToken } from "@/lib/hash";
 import router from "@/routes/sms.index";
 
-const client = testClient(createTestApp(router));
+const client = testClient(createTestApp(router)) as any;
 
 const SEND = {
   msg: "Real message",
@@ -193,6 +193,26 @@ describe("real Blasta mode", () => {
       const rows = await db.select().from(smsMessages).where(eq(smsMessages.msgId, "REAL-MSG-001"));
       expect(rows).toHaveLength(1);
       await db.delete(smsMessages).where(eq(smsMessages.msgId, "REAL-MSG-001"));
+    });
+
+    it("rejects input with no valid phone numbers before calling Blasta", async () => {
+      blastaReply = {
+        status: 201,
+        body: { msg_id: "SHOULD-NOT-BE-CALLED", status_code: "201", description: "Message accepted" },
+      };
+
+      const response = await client.v3.api.send_sms.$post({
+        json: { ...SEND, numbers: " , , " },
+        header: { Authorization: "Bearer token-abc" },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        msg_id: "",
+        status_code: "400",
+        description: "No valid phone numbers provided",
+      });
+      expect(captured).toHaveLength(0);
     });
 
     it("returns 401 when Blasta rejects the token", async () => {
